@@ -1,0 +1,94 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swim Data Editor - Corrector FIT</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>🏊 Swim Data Editor</h1>
+      <p>Ajusta tiempos de largos olvidados y genera descansos sin salir del navegador</p>
+    </header>
+
+    <section class="card upload-section">
+      <div class="file-drop-area">
+        <input type="file" id="fit-input" accept=".fit" />
+        <label for="fit-input" class="btn primary">Seleccionar archivo .FIT</label>
+        <span id="file-name-label">Ningún archivo seleccionado</span>
+      </div>
+    </section>
+
+    <section id="stats-panel" class="card stats-grid hidden">
+      <div class="stat-box">
+        <span class="stat-label">Distancia Total</span>
+        <span class="stat-value" id="stat-dist">-- m</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Tiempo Nado</span>
+        <span class="stat-value" id="stat-time">--:--</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Largos Totales</span>
+        <span class="stat-value" id="stat-lengths">--</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Piscina</span>
+        <span class="stat-value" id="stat-pool">-- m</span>
+      </div>
+    </section>
+
+    <section id="editor-panel" class="card hidden">
+      <div class="toolbar">
+        <div class="toolbar-info">
+          <span id="selection-info">Haz clic en una barra para seleccionarla</span>
+        </div>
+        <div class="toolbar-actions">
+          <button id="btn-open-adjust" class="btn secondary" disabled>⏱️ Ajustar tiempo del largo</button>
+          <button id="btn-export-fit" class="btn success">💾 Descargar .FIT Corregido</button>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <canvas id="lengthsChart"></canvas>
+      </div>
+
+      <div class="legend-bar">
+        <span class="legend-tag crol">Crol / Libre</span>
+        <span class="legend-tag espalda">Espalda</span>
+        <span class="legend-tag braza">Braza</span>
+        <span class="legend-tag mariposa">Mariposa</span>
+        <span class="legend-tag drill">Técnica / Drill</span>
+        <span class="legend-tag rest">Descanso (Rest)</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Diálogo modal para ajustar tiempo -->
+  <dialog id="modal-adjust-time">
+    <form method="dialog" id="form-adjust-time">
+      <h3>Ajustar duración del largo</h3>
+      <p id="modal-desc">Modifica el tiempo si olvidaste pausar el reloj al llegar al borde.</p>
+      
+      <div class="form-group">
+        <label id="lbl-current-time">Tiempo registrado: -- s</label>
+      </div>
+
+      <div class="form-group">
+        <label for="input-new-time">Tiempo real nadando (segundos o mm:ss):</label>
+        <input type="text" id="input-new-time" placeholder="Ej: 42 o 0:42" required autocomplete="off" />
+        <small>El tiempo sobrante se insertará inmediatamente como un <strong>Descanso (Rest)</strong>.</small>
+      </div>
+
+      <div class="dialog-buttons">
+        <button type="button" id="btn-cancel-modal" class="btn secondary">Cancelar</button>
+        <button type="submit" class="btn primary">Aplicar y Crear Descanso</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
