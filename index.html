@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swim Data Editor - v1.0.4</title>
+  <title>Swim Data Editor - v1.0.5</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -39,7 +39,6 @@
     .stat-lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
     .stat-val { font-size: 1.2rem; font-weight: 700; color: #fff; }
 
-    /* Contenedor del gráfico con scroll horizontal para móviles */
     .chart-wrapper {
       position: relative;
       display: flex;
@@ -50,7 +49,7 @@
       margin-top: 12px;
     }
     .y-axis-container {
-      width: 52px;
+      width: 58px;
       flex-shrink: 0;
       background: #0b1120;
       border-right: 1px solid #1e293b;
@@ -62,7 +61,7 @@
       -webkit-overflow-scrolling: touch;
     }
     .bar { cursor: pointer; transition: opacity 0.15s; }
-    .bar:hover { opacity: 0.8; }
+    .bar:hover { opacity: 0.85; }
     .bar.selected { stroke: #ffffff; stroke-width: 2.5; }
 
     .actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
@@ -91,7 +90,7 @@
   <div class="container">
     <div class="header">
       <h2>🏊 Swim Data Editor</h2>
-      <span class="badge">v1.0.4</span>
+      <span class="badge">v1.0.5</span>
     </div>
 
     <div class="card file-box">
@@ -101,24 +100,23 @@
 
     <div id="statsCard" class="card stats hidden">
       <div class="stat-item"><span class="stat-lbl">Distancia</span><span class="stat-val" id="stDist">-- m</span></div>
-      <div class="stat-item"><span class="stat-lbl">Tiempo</span><span class="stat-val" id="stTime">--:--</span></div>
+      <div class="stat-item"><span class="stat-lbl">Tiempo Nado</span><span class="stat-val" id="stTime">--:--</span></div>
       <div class="stat-item"><span class="stat-lbl">Largos</span><span class="stat-val" id="stCount">--</span></div>
       <div class="stat-item"><span class="stat-lbl">Piscina</span><span class="stat-val" id="stPool">-- m</span></div>
     </div>
 
     <div id="editorCard" class="card hidden">
       <div class="actions">
-        <span id="selInfo" style="font-size: 0.85rem; color: var(--muted);">Toca una barra para ver detalles o corregirla</span>
+        <span id="selInfo" style="font-size: 0.85rem; color: var(--muted);">Toca una barra para seleccionarla</span>
         <div style="display: flex; gap: 6px;">
           <button id="btnEdit" class="btn btn-primary" disabled>⏱️ Ajustar Tiempo</button>
           <button id="btnDownload" class="btn btn-success">💾 Descargar .FIT</button>
         </div>
       </div>
 
-      <!-- Gráfico de barras con Eje Y fijo y Eje X desplazable -->
       <div class="chart-wrapper">
         <div class="y-axis-container">
-          <svg id="yAxisSvg" width="52" height="280"></svg>
+          <svg id="yAxisSvg" width="58" height="280"></svg>
         </div>
         <div class="chart-scroll-box" id="scrollBox">
           <svg id="chartSvg" height="280"></svg>
@@ -141,13 +139,13 @@
       <h3>Ajustar Largo</h3>
       <p id="dlgCurrent" style="color: var(--accent); margin: 8px 0; font-size: 0.95rem; font-weight: bold;">Tiempo: --s</p>
       <label style="font-size: 0.8rem; color: var(--muted);">Tiempo real nadando (segundos o mm:ss):</label>
-      <input type="text" id="dlgInput" placeholder="Ej: 42 o 0:42" required autocomplete="off" />
+      <input type="text" id="dlgInput" placeholder="Ej: 38 o 0:38" required autocomplete="off" />
       <small style="color: var(--muted); font-size: 0.75rem; display: block; margin-bottom: 12px;">
-        El tiempo sobrante se insertará como <strong>Descanso (Rest)</strong>.
+        El tiempo restante se añadirá como descanso (Rest).
       </small>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editDialog').close()">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Aplicar Corrección</button>
+        <button type="submit" class="btn btn-primary">Aplicar</button>
       </div>
     </form>
   </dialog>
@@ -165,7 +163,7 @@
       statusEl.className = 'status ' + type;
     };
 
-    function readFieldVal(dv, offset, size, isLE, baseType) {
+    function readVal(dv, offset, size, isLE) {
       if (offset + size > dv.byteLength) return null;
       if (size === 1) return dv.getUint8(offset);
       if (size === 2) return dv.getUint16(offset, isLE);
@@ -173,13 +171,22 @@
       return null;
     }
 
-    // --- PARSER FIT ROBUSTO ---
+    // Formateador de tiempo legible: 45s o 1:25
+    function formatTime(totalSec) {
+      const s = Math.round(totalSec);
+      const min = Math.floor(s / 60);
+      const rem = s % 60;
+      if (min === 0) return `${rem}s`;
+      return `${min}:${rem.toString().padStart(2, '0')}`;
+    }
+
+    // --- PARSER FIT BINARIO DE NATACIÓN ---
     function parseSwimFit(buffer) {
       const dv = new DataView(buffer);
       if (buffer.byteLength < 14) throw new Error("Archivo demasiado corto.");
       
       const tag = String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11));
-      if (tag !== '.FIT') throw new Error("El archivo no tiene la firma binaria .FIT");
+      if (tag !== '.FIT') throw new Error("No es un archivo .FIT válido");
 
       const headerSize = dv.getUint8(0);
       const dataSize = dv.getUint32(4, true);
@@ -187,15 +194,12 @@
       const endOffset = headerSize + dataSize;
 
       const localDefs = {};
-      const parsedLengths = [];
+      const rawLengths = [];
       let detectedPool = 25;
 
       while (offset < endOffset && offset < buffer.byteLength) {
         const recordHeader = dv.getUint8(offset++);
-        
-        if ((recordHeader & 0x80) !== 0) {
-          continue; // Cabecera comprimida
-        }
+        if ((recordHeader & 0x80) !== 0) continue; // Skip timestamps comprimidos
 
         const isDefinition = (recordHeader & 0x40) !== 0;
         const localMsgType = recordHeader & 0x0F;
@@ -209,10 +213,10 @@
           const fields = [];
 
           for (let f = 0; f < numFields; f++) {
-            const fieldNum = dv.getUint8(offset++);
-            const fieldSize = dv.getUint8(offset++);
-            const baseType = dv.getUint8(offset++);
-            fields.push({ num: fieldNum, size: fieldSize, type: baseType });
+            const fNum = dv.getUint8(offset++);
+            const fSize = dv.getUint8(offset++);
+            const fType = dv.getUint8(offset++);
+            fields.push({ num: fNum, size: fSize, type: fType });
           }
 
           if ((recordHeader & 0x20) !== 0) {
@@ -226,44 +230,56 @@
           if (!def) break;
 
           const recordStart = offset;
-          let timerTime = null;
-          let elapsedTime = null;
-          let stroke = 0;
-          let lengthType = 1;
 
-          if (def.globalMsgNum === 101) { // Mensaje 'length'
+          // Global Message 101 = length
+          if (def.globalMsgNum === 101) {
             let fieldOffset = recordStart;
+            let timerTime = null;
+            let elapsedTime = null;
+            let stroke = 0;
+            let lengthType = 1;
+            let startTime = null;
+
             for (const f of def.fields) {
-              const val = readFieldVal(dv, fieldOffset, f.size, def.isLE, f.type);
-              
-              if (f.num === 2 && val !== null) { // total_timer_time
-                // Escala de Garmin: si supera 500 viene en milisegundos (scale 1000)
-                timerTime = val > 500 ? (val / 1000) : val;
-              } else if (f.num === 1 && val !== null) { // total_elapsed_time
-                elapsedTime = val > 500 ? (val / 1000) : val;
-              } else if (f.num === 7 && val !== null) { // swim_stroke
-                stroke = val;
-              } else if (f.num === 12 && val !== null) { // length_type
-                lengthType = val;
+              const raw = readVal(dv, fieldOffset, f.size, def.isLE);
+
+              if (f.num === 2 && raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF) {
+                // total_timer_time: Garmin lo guarda con escala 1000 (ms) o 100 (centésimas)
+                timerTime = raw > 1000 ? (raw / 1000) : (raw > 150 ? raw / 100 : raw);
+              } else if (f.num === 1 && raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF) {
+                // total_elapsed_time
+                elapsedTime = raw > 1000 ? (raw / 1000) : (raw > 150 ? raw / 100 : raw);
+              } else if (f.num === 7 && raw !== null) {
+                stroke = raw; // 0: libre, 1: espalda, 2: braza, 3: mariposa, 5: rest
+              } else if (f.num === 12 && raw !== null) {
+                lengthType = raw; // 1: nado, 0: idle/rest
+              } else if (f.num === 3 && raw !== null) {
+                startTime = raw;
               }
               fieldOffset += f.size;
             }
 
-            const finalDur = Math.round(timerTime || elapsedTime || 0);
-            if (finalDur > 0) {
-              parsedLengths.push({
-                offset: recordStart,
-                duration: finalDur,
-                stroke: stroke,
-                isRest: stroke === 5 || lengthType === 0
-              });
+            // Normalización de duración real del largo
+            let dur = timerTime || elapsedTime || 0;
+            
+            // Si la duración sigue dando disparatada (> 3600 segundos = 1 hora en un solo largo), es un timestamp
+            if (dur > 3600) {
+              dur = 0;
             }
-          } else if (def.globalMsgNum === 18) { // Mensaje 'session'
+
+            rawLengths.push({
+              duration: Math.round(dur),
+              stroke: stroke,
+              isRest: stroke === 5 || lengthType === 0,
+              startTime: startTime
+            });
+          } else if (def.globalMsgNum === 18) {
+            // Global Message 18 = session
             let fieldOffset = recordStart;
             for (const f of def.fields) {
               if (f.num === 44 && f.size === 2) {
-                const val = dv.getUint16(fieldOffset, def.isLE);
-                if (val > 0) detectedPool = val / 100;
+                const p = dv.getUint16(fieldOffset, def.isLE);
+                if (p > 0 && p < 10000) detectedPool = p / 100;
               }
               fieldOffset += f.size;
             }
@@ -273,10 +289,21 @@
         }
       }
 
-      return { lengths: parsedLengths, pool: detectedPool };
+      // Si algún largo no tenía duración explícita pero sí startTime secuencial, calcular delta
+      for (let i = 0; i < rawLengths.length; i++) {
+        if (rawLengths[i].duration <= 0) {
+          if (i + 1 < rawLengths.length && rawLengths[i+1].startTime && rawLengths[i].startTime) {
+            const diff = rawLengths[i+1].startTime - rawLengths[i].startTime;
+            if (diff > 0 && diff < 300) rawLengths[i].duration = diff;
+          }
+          if (rawLengths[i].duration <= 0) rawLengths[i].duration = 25; // Fallback coherente
+        }
+      }
+
+      return { lengths: rawLengths, pool: detectedPool };
     }
 
-    // --- CARGA DE ARCHIVO ---
+    // --- CARGA ---
     document.getElementById('fitFile').addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
@@ -290,14 +317,13 @@
         const res = parseSwimFit(buffer);
 
         if (!res.lengths || res.lengths.length === 0) {
-          throw new Error("No se encontraron largos de piscina en el archivo.");
+          throw new Error("No se detectaron largos de natación en piscina.");
         }
 
         lengths = res.lengths;
         poolLength = res.pool || 25;
 
         setStatus(`✅ ${lengths.length} largos detectados correctamente.`, 'success');
-        
         document.getElementById('statsCard').classList.remove('hidden');
         document.getElementById('editorCard').classList.remove('hidden');
         
@@ -310,11 +336,11 @@
 
     function strokeColor(stroke, isRest) {
       if (isRest || stroke === 5) return '#64748b';
-      if (stroke === 0) return '#38bdf8'; // Freestyle
-      if (stroke === 1) return '#818cf8'; // Backstroke
-      if (stroke === 2) return '#fbbf24'; // Breaststroke
-      if (stroke === 3) return '#f87171'; // Butterfly
-      return '#a78bfa'; // Drill / Técnica
+      if (stroke === 0) return '#38bdf8';
+      if (stroke === 1) return '#818cf8';
+      if (stroke === 2) return '#fbbf24';
+      if (stroke === 3) return '#f87171';
+      return '#a78bfa';
     }
 
     function strokeName(stroke, isRest) {
@@ -326,42 +352,39 @@
       return 'Técnica';
     }
 
-    // --- DIBUJADO DE GRÁFICO CON EJES X e Y ---
+    // --- GRÁFICO ---
     function drawChart() {
       const ySvg = document.getElementById('yAxisSvg');
       const chartSvg = document.getElementById('chartSvg');
       
       const chartH = 280;
-      const topPadding = 20;
-      const bottomPadding = 35; // Espacio para etiquetas de largo
+      const topPadding = 25;
+      const bottomPadding = 35;
       const plotHeight = chartH - topPadding - bottomPadding;
 
-      // Calcular el valor máximo real de duración
-      const maxVal = Math.max(...lengths.map(l => l.duration), 30);
-      // Redondear el máximo del eje al múltiplo superior de 15 o 30
+      // Calcular máximo real (acotado a valores lógicos)
+      const maxVal = Math.max(...lengths.map(l => l.duration), 45);
       const step = maxVal > 120 ? 30 : 15;
       const yMax = Math.ceil(maxVal / step) * step;
 
-      // 1. DIBUJAR EJE Y (Vertical Fijo)
+      // 1. EJE Y (Tiempo real en segundos o mm:ss)
       let yHtml = '';
       const numTicks = 4;
       for (let i = 0; i <= numTicks; i++) {
         const val = Math.round((yMax / numTicks) * i);
         const y = chartH - bottomPadding - (val / yMax) * plotHeight;
-        
-        // Formato tiempo (segundos o mm:ss si es alto)
-        const label = val >= 60 ? `${Math.floor(val/60)}m${val%60 ? val%60 : ''}` : `${val}s`;
+        const label = formatTime(val);
         
         yHtml += `
-          <text x="46" y="${y + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${label}</text>
-          <line x1="48" y1="${y}" x2="52" y2="${y}" stroke="#475569" stroke-width="1"/>
+          <text x="50" y="${y + 4}" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="end">${label}</text>
+          <line x1="52" y1="${y}" x2="58" y2="${y}" stroke="#475569" stroke-width="1"/>
         `;
       }
       ySvg.innerHTML = yHtml;
 
-      // 2. DIBUJAR BARRAS Y EJE X (Desplazable)
-      const barW = 20;
-      const gap = 10;
+      // 2. BARRAS Y EJE X
+      const barW = 18;
+      const gap = 8;
       const totalW = Math.max(chartSvg.parentElement.clientWidth, lengths.length * (barW + gap) + 40);
 
       let chartHtml = '';
@@ -373,11 +396,10 @@
         chartHtml += `<line x1="0" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
       }
 
-      // Línea base del Eje X
+      // Eje X base
       const baseY = chartH - bottomPadding;
       chartHtml += `<line x1="0" y1="${baseY}" x2="${totalW}" y2="${baseY}" stroke="#475569" stroke-width="1.5"/>`;
 
-      // Barras y Números de Largo
       lengths.forEach((l, i) => {
         const barH = Math.max(3, (l.duration / yMax) * plotHeight);
         const x = 16 + i * (barW + gap);
@@ -385,36 +407,26 @@
         const color = strokeColor(l.stroke, l.isRest);
         const isSel = selectedIdx === i;
 
-        // Barra
+        // Barra limpia (sin rótulo apelotonado arriba)
         chartHtml += `
           <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3"
                 fill="${color}" class="bar ${isSel ? 'selected' : ''}" data-idx="${i}">
-            <title>Largo #${i+1}: ${l.duration}s (${strokeName(l.stroke, l.isRest)})</title>
+            <title>#${i+1}: ${formatTime(l.duration)} (${strokeName(l.stroke, l.isRest)})</title>
           </rect>
         `;
 
-        // Etiqueta del Eje X (Número de Largo)
+        // Número de largo (#1, #2, etc.)
         chartHtml += `
           <text x="${x + barW/2}" y="${baseY + 16}" fill="${isSel ? '#ffffff' : '#94a3b8'}" 
                 font-size="10" font-weight="${isSel ? 'bold' : 'normal'}" text-anchor="middle">
             #${i + 1}
           </text>
         `;
-
-        // Si la barra es muy anómala (larga), mostrar los segundos encima para localizarla al momento
-        if (l.duration >= 60 || l.duration === maxVal) {
-          chartHtml += `
-            <text x="${x + barW/2}" y="${y - 4}" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle">
-              ${l.duration}s
-            </text>
-          `;
-        }
       });
 
       chartSvg.setAttribute('width', totalW);
       chartSvg.innerHTML = chartHtml;
 
-      // Eventos de selección
       chartSvg.querySelectorAll('.bar').forEach(r => {
         r.addEventListener('click', (ev) => {
           const idx = Number(ev.target.getAttribute('data-idx'));
@@ -427,11 +439,9 @@
       selectedIdx = idx;
       const l = lengths[idx];
       const name = strokeName(l.stroke, l.isRest);
-      const min = Math.floor(l.duration / 60);
-      const sec = l.duration % 60;
-      const timeFmt = min > 0 ? `${min}m ${sec}s (${l.duration}s)` : `${l.duration}s`;
+      const timeStr = formatTime(l.duration);
 
-      document.getElementById('selInfo').textContent = `Largo #${idx + 1} seleccionado: ${name} — ${timeFmt}`;
+      document.getElementById('selInfo').textContent = `Largo #${idx + 1}: ${name} — ${timeStr} (${l.duration}s)`;
       
       const btnEdit = document.getElementById('btnEdit');
       if (l.isRest) {
@@ -447,11 +457,9 @@
     function updateStats() {
       const swimLengths = lengths.filter(l => !l.isRest);
       const totalSec = swimLengths.reduce((acc, l) => acc + l.duration, 0);
-      const min = Math.floor(totalSec / 60);
-      const sec = totalSec % 60;
-
+      
       document.getElementById('stDist').textContent = `${swimLengths.length * poolLength} m`;
-      document.getElementById('stTime').textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+      document.getElementById('stTime').textContent = formatTime(totalSec);
       document.getElementById('stCount').textContent = lengths.length;
       document.getElementById('stPool').textContent = `${poolLength} m`;
     }
@@ -461,7 +469,7 @@
     document.getElementById('btnEdit').addEventListener('click', () => {
       if (selectedIdx === null) return;
       const cur = lengths[selectedIdx].duration;
-      document.getElementById('dlgCurrent').textContent = `Largo #${selectedIdx + 1}: ${cur} segundos registrados`;
+      document.getElementById('dlgCurrent').textContent = `Largo #${selectedIdx + 1}: ${formatTime(cur)} (${cur}s) registrados`;
       document.getElementById('dlgInput').value = '';
       dlg.showModal();
     });
@@ -480,7 +488,7 @@
       const diffSec = cur - newSec;
       lengths[selectedIdx].duration = newSec;
 
-      // Insertar el descanso con el sobrante
+      // Insertar descanso con los segundos restantes
       lengths.splice(selectedIdx + 1, 0, {
         duration: diffSec,
         stroke: 5,
@@ -491,7 +499,7 @@
       const fixedIdx = selectedIdx;
       selectedIdx = null;
       document.getElementById('btnEdit').disabled = true;
-      document.getElementById('selInfo').textContent = `Largo #${fixedIdx + 1} reducido a ${newSec}s. Se añadieron ${diffSec}s de descanso.`;
+      document.getElementById('selInfo').textContent = `Largo #${fixedIdx + 1} ajustado a ${formatTime(newSec)}. Se crearon ${formatTime(diffSec)} de descanso.`;
       
       updateStats();
       drawChart();
