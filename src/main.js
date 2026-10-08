@@ -1,6 +1,19 @@
 ﻿import { parseFitFile, trimLengthAndConvertToRest, exportAndDownloadFit } from './fitProcessor.js';
 import { renderLengthsChart } from './chartManager.js';
 
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.1';
+
+const versionBadge = document.getElementById('app-version-badge');
+if (versionBadge) {
+  versionBadge.textContent = `v${APP_VERSION}`;
+}
+
+console.log(
+  `%c🏊 Swim Data Editor%c v${APP_VERSION} `,
+  'background: #38bdf8; color: #0f172a; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
+  'background: #334155; color: #f8fafc; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0;'
+);
+
 let workoutData = null;
 let currentFileName = '';
 let selectedLengthIndex = null;
@@ -52,7 +65,6 @@ function handleSelectLength(index) {
   }
 }
 
-// Evento de selección de archivo
 fitInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -78,7 +90,6 @@ fitInput.addEventListener('change', async (e) => {
     fileNameLabel.textContent = 'Error al cargar';
     alert(`No se pudo leer el archivo:\n${err.message}`);
   } finally {
-    // Permite volver a seleccionar el mismo archivo si se desea recargar
     fitInput.value = '';
   }
 });

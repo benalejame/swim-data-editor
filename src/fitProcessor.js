@@ -1,15 +1,12 @@
 import { Decoder, Encoder, Stream } from '@garmin/fitsdk';
 
-/**
- * Lee un archivo .FIT de natación y normaliza las propiedades.
- */
 export async function parseFitFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const byteArray = new Uint8Array(arrayBuffer);
   const stream = Stream.fromByteArray(byteArray);
 
   if (!Decoder.isFIT(stream)) {
-    throw new Error("El archivo seleccionado no es un binario .FIT válido.");
+    throw new Error("El archivo no es un formato binario .FIT reconocido.");
   }
 
   const decoder = new Decoder(stream);
@@ -21,13 +18,11 @@ export async function parseFitFile(file) {
   });
 
   if (errors && errors.length > 0) {
-    console.warn("Avisos del Decoder FIT:", errors);
+    console.warn("Avisos del decodificador FIT:", errors);
   }
 
-  // Inspección en consola para comprobar qué campos vienen en tu reloj
-  console.log("Mensajes decodificados del archivo FIT:", messages);
+  console.log("Mensajes extraídos del archivo FIT:", messages);
 
-  // El SDK puede nombrar las colecciones como lengthMesgs / lengths / length
   const lengthMesgs = messages.lengthMesgs || messages.lengths || messages.length || [];
   const lapMesgs = messages.lapMesgs || messages.laps || messages.lap || [];
   const sessionMesg = (messages.sessionMesgs && messages.sessionMesgs[0]) || 
@@ -38,8 +33,8 @@ export async function parseFitFile(file) {
 
   if (lengthMesgs.length === 0) {
     throw new Error(
-      "El archivo se leyó correctamente pero no contiene largos de piscina individuales (mensajes 'length'). " +
-      "Asegúrate de que la actividad se registró con el perfil de 'Natación en piscina' (Pool Swim) y no 'Aguas abiertas'."
+      "El archivo no contiene largos de piscina (mensajes 'length'). " +
+      "Verifica que la actividad sea de perfil natación en piscina."
     );
   }
 
@@ -53,33 +48,28 @@ export async function parseFitFile(file) {
   };
 }
 
-/**
- * Ajusta la duración de un largo individual y convierte el tiempo sobrante en descanso.
- */
 export function trimLengthAndConvertToRest(workoutData, targetIndex, newDurationSec) {
   const target = workoutData.lengthMesgs[targetIndex];
   if (!target) throw new Error("Largo no encontrado.");
 
   const strokeStr = String(target.swimStroke || '').toLowerCase();
   if (strokeStr === 'rest' || target.lengthType === 'idle') {
-    throw new Error("El elemento seleccionado ya es un descanso.");
+    throw new Error("El largo seleccionado ya es un descanso.");
   }
 
   const currentDuration = Math.round(target.totalTimerTime || target.totalElapsedTime || 0);
   const diffSec = currentDuration - newDurationSec;
 
   if (diffSec <= 0) {
-    throw new Error(`El nuevo tiempo (${newDurationSec}s) debe ser menor que el actual (${currentDuration}s).`);
+    throw new Error(`El nuevo tiempo (${newDurationSec}s) debe ser menor que el registrado (${currentDuration}s).`);
   }
 
   const poolLength = workoutData.sessionMesg?.poolLength || 25;
 
-  // 1. Modificar el largo seleccionado
   target.totalTimerTime = newDurationSec;
   target.totalElapsedTime = newDurationSec;
   target.avgSpeed = Number((poolLength / newDurationSec).toFixed(3));
 
-  // 2. Generar el descanso siguiente
   const originalStartTime = new Date(target.startTime || target.timestamp).getTime();
   const restStartTime = new Date(originalStartTime + (newDurationSec * 1000));
   const restEndTime = new Date(restStartTime.getTime() + (diffSec * 1000));
@@ -98,14 +88,12 @@ export function trimLengthAndConvertToRest(workoutData, targetIndex, newDuration
 
   workoutData.lengthMesgs.splice(targetIndex + 1, 0, restMessage);
 
-  // Reindexar messageIndex
   for (let i = targetIndex + 2; i < workoutData.lengthMesgs.length; i++) {
     if (workoutData.lengthMesgs[i].messageIndex !== undefined) {
       workoutData.lengthMesgs[i].messageIndex += 1;
     }
   }
 
-  // 3. Actualizar la sesión
   if (workoutData.sessionMesg) {
     workoutData.sessionMesg.totalTimerTime = Math.max(0, (workoutData.sessionMesg.totalTimerTime || 0) - diffSec);
     if (workoutData.sessionMesg.totalDistance && workoutData.sessionMesg.totalTimerTime > 0) {
@@ -113,7 +101,6 @@ export function trimLengthAndConvertToRest(workoutData, targetIndex, newDuration
     }
   }
 
-  // 4. Actualizar el Lap
   if (workoutData.lapMesgs?.length) {
     const parentLap = workoutData.lapMesgs.find(lap => {
       const s = new Date(lap.startTime).getTime();
@@ -132,9 +119,6 @@ export function trimLengthAndConvertToRest(workoutData, targetIndex, newDuration
   return workoutData;
 }
 
-/**
- * Codifica los mensajes en un nuevo .FIT binario.
- */
 export function exportAndDownloadFit(workoutData, originalFilename = 'workout_editado.fit') {
   const encoder = new Encoder();
 

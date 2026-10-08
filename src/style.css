@@ -20,7 +20,7 @@
 body {
   background-color: var(--bg-color);
   color: var(--text-primary);
-  padding: 24px;
+  padding: 16px;
 }
 
 .app-container {
@@ -28,24 +28,43 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .app-header h1 {
-  font-size: 1.8rem;
-  margin-bottom: 6px;
+  font-size: 1.6rem;
+  margin-bottom: 4px;
+}
+
+.version-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  background-color: #334155;
+  color: var(--accent-color);
+  border-radius: 9999px;
+  border: 1px solid #475569;
+  letter-spacing: 0.05em;
+  user-select: none;
 }
 
 .app-header p {
   color: var(--text-muted);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
 }
 
 .upload-section {
@@ -56,8 +75,10 @@ body {
 
 .file-drop-area {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  text-align: center;
 }
 
 .file-drop-area input[type="file"] {
@@ -106,25 +127,25 @@ body {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
 }
 
 .stat-box {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .stat-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .stat-value {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
 }
 
@@ -132,42 +153,43 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .toolbar-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .chart-wrapper {
   position: relative;
-  height: 380px;
+  height: 340px;
   width: 100%;
 }
 
 .legend-bar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   margin-top: 14px;
   flex-wrap: wrap;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .legend-tag {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .legend-tag::before {
   content: "";
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
 }
 
 .legend-tag.crol::before { background: #38bdf8; }
@@ -181,24 +203,23 @@ body {
   display: none !important;
 }
 
-/* Modal Dialog */
 dialog {
   margin: auto;
-  padding: 24px;
+  padding: 20px;
   background: #1e293b;
   color: #fff;
   border: 1px solid #475569;
   border-radius: 12px;
-  max-width: 420px;
+  max-width: 400px;
   width: 90%;
 }
 
 dialog::backdrop {
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .form-group {
-  margin: 16px 0;
+  margin: 14px 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -215,11 +236,12 @@ dialog::backdrop {
 
 .form-group small {
   color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 20px;
+  gap: 8px;
+  margin-top: 18px;
 }

@@ -66,7 +66,7 @@ export function renderLengthsChart(lengthMesgs, onSelectLength) {
       },
       scales: {
         x: {
-          ticks: { color: '#94a3b8' },
+          ticks: { color: '#94a3b8', maxRotation: 0 },
           grid: { display: false }
         },
         y: {
