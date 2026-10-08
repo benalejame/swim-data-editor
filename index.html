@@ -11,16 +11,16 @@
     <header class="app-header">
       <div class="header-title-row">
         <h1>🏊 Swim Data Editor</h1>
-        <span id="app-version-badge" class="version-badge">v1.0.1</span>
+        <span id="app-version-badge" class="version-badge">v1.0.2</span>
       </div>
-      <p>Ajusta tiempos de largos olvidados y genera descansos sin salir del navegador</p>
+      <p>Ajusta tiempos de largos olvidados y genera descansos</p>
     </header>
 
     <section class="card upload-section">
       <div class="file-drop-area">
-        <input type="file" id="fit-input" accept=".fit" />
-        <label for="fit-input" class="btn primary">Seleccionar archivo .FIT</label>
-        <span id="file-name-label">Ningún archivo seleccionado</span>
+        <!-- Input estándar visible para compatibilidad total con selectores móviles -->
+        <input type="file" id="fit-input" />
+        <div id="status-log" class="status-box">Selecciona un archivo .FIT para empezar</div>
       </div>
     </section>
 
@@ -46,16 +46,16 @@
     <section id="editor-panel" class="card hidden">
       <div class="toolbar">
         <div class="toolbar-info">
-          <span id="selection-info">Haz clic en una barra para seleccionarla</span>
+          <span id="selection-info">Toca una barra para seleccionarla</span>
         </div>
         <div class="toolbar-actions">
-          <button id="btn-open-adjust" class="btn secondary" disabled>⏱️ Ajustar tiempo del largo</button>
-          <button id="btn-export-fit" class="btn success">💾 Descargar .FIT Corregido</button>
+          <button id="btn-open-adjust" class="btn secondary" disabled>⏱️ Ajustar tiempo</button>
+          <button id="btn-export-fit" class="btn success">💾 Descargar .FIT</button>
         </div>
       </div>
 
-      <div class="chart-wrapper">
-        <canvas id="lengthsChart"></canvas>
+      <div class="chart-scroll-container">
+        <div id="svg-chart-container" class="svg-container"></div>
       </div>
 
       <div class="legend-bar">
@@ -63,7 +63,7 @@
         <span class="legend-tag espalda">Espalda</span>
         <span class="legend-tag braza">Braza</span>
         <span class="legend-tag mariposa">Mariposa</span>
-        <span class="legend-tag drill">Técnica / Drill</span>
+        <span class="legend-tag drill">Técnica</span>
         <span class="legend-tag rest">Descanso (Rest)</span>
       </div>
     </section>
@@ -72,21 +72,19 @@
   <dialog id="modal-adjust-time">
     <form method="dialog" id="form-adjust-time">
       <h3>Ajustar duración del largo</h3>
-      <p id="modal-desc">Modifica el tiempo si olvidaste pausar el reloj al llegar al borde.</p>
-      
-      <div class="form-group">
-        <label id="lbl-current-time">Tiempo registrado: -- s</label>
-      </div>
+      <p id="lbl-current-time" style="margin: 10px 0; color: #38bdf8;">Tiempo registrado: -- s</p>
 
       <div class="form-group">
         <label for="input-new-time">Tiempo real nadando (segundos o mm:ss):</label>
         <input type="text" id="input-new-time" placeholder="Ej: 42 o 0:42" required autocomplete="off" />
-        <small>El tiempo sobrante se insertará inmediatamente como un <strong>Descanso (Rest)</strong>.</small>
+        <small style="color: #94a3b8; display: block; margin-top: 4px;">
+          El tiempo sobrante se añadirá inmediatamente como <strong>Descanso (Rest)</strong>.
+        </small>
       </div>
 
       <div class="dialog-buttons">
         <button type="button" id="btn-cancel-modal" class="btn secondary">Cancelar</button>
-        <button type="submit" class="btn primary">Aplicar y Crear Descanso</button>
+        <button type="submit" class="btn primary">Confirmar</button>
       </div>
     </form>
   </dialog>
