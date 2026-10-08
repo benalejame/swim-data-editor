@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swim Data Editor - v1.0.7</title>
+  <title>Swim Data Editor - v1.0.8</title>
+  <script src="https://cdn.jsdelivr.net/npm/fit-file-parser@1.6.0/dist/fit-file-parser.js"></script>
   <style>
     :root {
       --bg: #0f172a;
@@ -90,12 +91,12 @@
   <div class="container">
     <div class="header">
       <h2>🏊 Swim Data Editor</h2>
-      <span class="badge">v1.0.7</span>
+      <span class="badge">v1.0.8 (Parser Oficial)</span>
     </div>
 
     <div class="card file-box">
       <input type="file" id="fitFile" accept=".fit" />
-      <div id="status" class="status">Selecciona tu archivo .FIT para analizar los largos</div>
+      <div id="status" class="status">Selecciona tu archivo .FIT para cargar tu entrenamiento</div>
     </div>
 
     <div id="statsCard" class="card stats hidden">
@@ -141,7 +142,7 @@
       <label style="font-size: 0.8rem; color: var(--muted);">Tiempo real nadando (segundos o mm:ss):</label>
       <input type="text" id="dlgInput" placeholder="Ej: 24 o 0:24" required autocomplete="off" />
       <small style="color: var(--muted); font-size: 0.75rem; display: block; margin-bottom: 12px;">
-        El tiempo sobrante se añadirá inmediatamente como <strong>Descanso (Rest)</strong>.
+        El tiempo sobrante se añadirá inmediatamente como descanso (Rest).
       </small>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editDialog').close()">Cancelar</button>
@@ -163,14 +164,6 @@
       statusEl.className = 'status ' + type;
     };
 
-    function readVal(dv, offset, size, isLE) {
-      if (offset + size > dv.byteLength) return null;
-      if (size === 1) return dv.getUint8(offset);
-      if (size === 2) return dv.getUint16(offset, isLE);
-      if (size === 4) return dv.getUint32(offset, isLE);
-      return null;
-    }
-
     function formatTime(totalSec) {
       const s = Math.round(totalSec);
       const min = Math.floor(s / 60);
@@ -179,221 +172,113 @@
       return `${min}:${rem.toString().padStart(2, '0')}`;
     }
 
-    // --- PARSER FIT INTELIGENTE ---
-    function parseSwimFit(buffer) {
-      const dv = new DataView(buffer);
-      if (buffer.byteLength < 14) throw new Error("Archivo demasiado corto.");
-      
-      const tag = String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11));
-      if (tag !== '.FIT') throw new Error("No es un archivo .FIT válido");
-
-      const headerSize = dv.getUint8(0);
-      const dataSize = dv.getUint32(4, true);
-      let offset = headerSize;
-      const endOffset = headerSize + dataSize;
-
-      const localDefs = {};
-      const rawRecords = [];
-      let detectedPool = 25;
-      let sessionActiveTime = 0;
-
-      while (offset < endOffset && offset < buffer.byteLength) {
-        const recordHeader = dv.getUint8(offset++);
-        if ((recordHeader & 0x80) !== 0) continue;
-
-        const isDefinition = (recordHeader & 0x40) !== 0;
-        const localMsgType = recordHeader & 0x0F;
-
-        if (isDefinition) {
-          offset++;
-          const arch = dv.getUint8(offset++);
-          const isLE = arch === 0;
-          const globalMsgNum = dv.getUint16(offset, isLE); offset += 2;
-          const numFields = dv.getUint8(offset++);
-          const fields = [];
-
-          for (let f = 0; f < numFields; f++) {
-            const fNum = dv.getUint8(offset++);
-            const fSize = dv.getUint8(offset++);
-            const fType = dv.getUint8(offset++);
-            fields.push({ num: fNum, size: fSize, type: fType });
-          }
-
-          if ((recordHeader & 0x20) !== 0) {
-            const devFields = dv.getUint8(offset++);
-            offset += devFields * 3;
-          }
-
-          localDefs[localMsgType] = { globalMsgNum, fields, isLE };
-        } else {
-          const def = localDefs[localMsgType];
-          if (!def) break;
-
-          const recordStart = offset;
-
-          // Message 101 = Length
-          if (def.globalMsgNum === 101) {
-            let fieldOffset = recordStart;
-            let timerTime = null;
-            let elapsedTime = null;
-            let stroke = 0;
-            let lengthType = 1;
-            let startTime = null;
-            let timestamp = null;
-
-            for (const f of def.fields) {
-              const raw = readVal(dv, fieldOffset, f.size, def.isLE);
-
-              if (raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF && raw !== 0xFF) {
-                if (f.num === 253) { // timestamp
-                  timestamp = raw;
-                } else if (f.num === 3) { // start_time
-                  startTime = raw;
-                } else if (f.num === 2) { // total_timer_time
-                  timerTime = raw;
-                } else if (f.num === 1) { // total_elapsed_time
-                  elapsedTime = raw;
-                } else if (f.num === 7) {
-                  stroke = raw;
-                } else if (f.num === 12) {
-                  lengthType = raw;
-                }
-              }
-              fieldOffset += f.size;
-            }
-
-            rawRecords.push({
-              timerTime,
-              elapsedTime,
-              startTime,
-              timestamp,
-              stroke,
-              isRest: stroke === 5 || lengthType === 0
-            });
-          } else if (def.globalMsgNum === 18) {
-            // Message 18 = Session
-            let fieldOffset = recordStart;
-            for (const f of def.fields) {
-              const raw = readVal(dv, fieldOffset, f.size, def.isLE);
-              if (f.num === 44 && f.size === 2 && raw && raw < 10000) {
-                detectedPool = raw / 100;
-              } else if (f.num === 8 && raw) { // total_timer_time de la sesión
-                sessionActiveTime = raw > 1000 ? Math.round(raw / 1000) : raw;
-              }
-              fieldOffset += f.size;
-            }
-          }
-
-          for (const f of def.fields) offset += f.size;
-        }
-      }
-
-      // --- CÁLCULO PRECISO DE DURACIÓN ---
-      const cleanLengths = [];
-      for (let i = 0; i < rawRecords.length; i++) {
-        const r = rawRecords[i];
-        let dur = null;
-
-        // 1. Si timestamp y startTime existen, la duración real es su diferencia directa
-        if (r.timestamp && r.startTime && r.timestamp >= r.startTime) {
-          const delta = r.timestamp - r.startTime;
-          if (delta > 0 && delta < 600) { // Menor a 10 min
-            dur = delta;
-          }
-        }
-
-        // 2. Si no, comprobar el delta entre largos consecutivos
-        if (!dur && i + 1 < rawRecords.length && rawRecords[i+1].startTime && r.startTime) {
-          const delta = rawRecords[i+1].startTime - r.startTime;
-          if (delta > 0 && delta < 600) {
-            dur = delta;
-          }
-        }
-
-        // 3. Si no, comprobar campos directos escalados (descartando epoch timestamps gigantes > 10000)
-        if (!dur && r.timerTime && r.timerTime < 100000) {
-          dur = r.timerTime > 1000 ? r.timerTime / 1000 : (r.timerTime > 200 ? r.timerTime / 100 : r.timerTime);
-        }
-        if (!dur && r.elapsedTime && r.elapsedTime < 100000) {
-          dur = r.elapsedTime > 1000 ? r.elapsedTime / 1000 : (r.elapsedTime > 200 ? r.elapsedTime / 100 : r.elapsedTime);
-        }
-
-        // Si fallara todo, un valor típico razonable
-        if (!dur || dur <= 0 || dur > 3600) dur = 24;
-
-        cleanLengths.push({
-          duration: Math.round(dur),
-          stroke: r.stroke,
-          isRest: r.isRest
-        });
-      }
-
-      return { lengths: cleanLengths, pool: detectedPool, sessionTime: sessionActiveTime };
-    }
-
-    // --- CARGA ---
+    // --- CARGA Y DECODIFICACIÓN ROBUSTA CON FIT-FILE-PARSER ---
     document.getElementById('fitFile').addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
 
       originalName = file.name;
-      setStatus(`Analizando ${file.name}...`, 'info');
+      setStatus(`Leyendo ${file.name}...`, 'info');
 
       try {
         const buffer = await file.arrayBuffer();
         fitBytes = new Uint8Array(buffer);
-        const res = parseSwimFit(buffer);
 
-        if (!res.lengths || res.lengths.length === 0) {
-          throw new Error("No se detectaron largos individuales en el archivo.");
+        // Instanciar el parser oficial
+        const ParserClass = window.FitParser || window.fitParser || (window.FitParser && window.FitParser.default);
+        if (!ParserClass) {
+          throw new Error("No se pudo inicializar la librería FIT en el navegador.");
         }
 
-        lengths = res.lengths;
-        poolLength = res.pool || 25;
+        const parser = new ParserClass({
+          force: true,
+          speedUnit: 'm/s',
+          lengthUnit: 'm',
+          elapsedRecordField: true
+        });
 
-        setStatus(`✅ ${lengths.length} largos detectados. Tiempos reales calculados.`, 'success');
-        document.getElementById('statsCard').classList.remove('hidden');
-        document.getElementById('editorCard').classList.remove('hidden');
-        
-        updateStats(res.sessionTime);
-        drawChart();
+        parser.parse(buffer, (error, data) => {
+          if (error) {
+            setStatus(`❌ Error al descifrar FIT: ${error}`, 'error');
+            return;
+          }
+
+          console.log("Datos FIT decodificados:", data);
+
+          // Extraer los largos (lengths)
+          let parsedLengths = [];
+          if (data.lengths && data.lengths.length > 0) {
+            parsedLengths = data.lengths;
+          } else if (data.records && data.records.length > 0) {
+            // Si el reloj no usó lengths sino records individuales
+            parsedLengths = data.records;
+          }
+
+          if (!parsedLengths || parsedLengths.length === 0) {
+            setStatus("❌ No se encontraron largos de piscina en el archivo.", 'error');
+            return;
+          }
+
+          poolLength = (data.sessions && data.sessions[0] && data.sessions[0].pool_length) || 25;
+
+          // Normalizar cada largo
+          lengths = parsedLengths.map(l => {
+            const dur = l.total_timer_time || l.total_elapsed_time || l.timer_time || 25;
+            const stroke = String(l.swim_stroke || l.stroke || '').toLowerCase();
+            const isRest = stroke.includes('rest') || l.length_type === 'idle' || stroke === '5';
+
+            return {
+              duration: Math.round(dur),
+              stroke: stroke,
+              isRest: isRest
+            };
+          });
+
+          setStatus(`✅ ${lengths.length} largos descifrados con éxito.`, 'success');
+          document.getElementById('statsCard').classList.remove('hidden');
+          document.getElementById('editorCard').classList.remove('hidden');
+
+          updateStats();
+          drawChart();
+        });
+
       } catch (err) {
         setStatus(`❌ Error: ${err.message}`, 'error');
       }
     });
 
-    function strokeColor(stroke, isRest) {
-      if (isRest || stroke === 5) return '#64748b';
-      if (stroke === 0) return '#38bdf8';
-      if (stroke === 1) return '#818cf8';
-      if (stroke === 2) return '#fbbf24';
-      if (stroke === 3) return '#f87171';
+    function getStrokeColor(stroke, isRest) {
+      if (isRest) return '#64748b';
+      if (stroke.includes('free') || stroke.includes('crol') || stroke === '0') return '#38bdf8';
+      if (stroke.includes('back') || stroke.includes('espalda') || stroke === '1') return '#818cf8';
+      if (stroke.includes('breast') || stroke.includes('braza') || stroke === '2') return '#fbbf24';
+      if (stroke.includes('butter') || stroke.includes('mariposa') || stroke === '3') return '#f87171';
       return '#a78bfa';
     }
 
-    function strokeName(stroke, isRest) {
-      if (isRest || stroke === 5) return 'Descanso';
-      if (stroke === 0) return 'Crol';
-      if (stroke === 1) return 'Espalda';
-      if (stroke === 2) return 'Braza';
-      if (stroke === 3) return 'Mariposa';
+    function getStrokeName(stroke, isRest) {
+      if (isRest) return 'Descanso';
+      if (stroke.includes('free') || stroke.includes('crol') || stroke === '0') return 'Crol';
+      if (stroke.includes('back') || stroke.includes('espalda') || stroke === '1') return 'Espalda';
+      if (stroke.includes('breast') || stroke.includes('braza') || stroke === '2') return 'Braza';
+      if (stroke.includes('butter') || stroke.includes('mariposa') || stroke === '3') return 'Mariposa';
       return 'Técnica';
     }
 
-    // --- GRÁFICO ---
+    // --- GRÁFICO DINÁMICO ---
     function drawChart() {
       const ySvg = document.getElementById('yAxisSvg');
       const chartSvg = document.getElementById('chartSvg');
-      
+
       const chartH = 280;
       const topPadding = 25;
       const bottomPadding = 35;
       const plotHeight = chartH - topPadding - bottomPadding;
 
-      // Calcular la escala tomando como base los largos normales
-      const normalDurations = lengths.map(l => l.duration).filter(d => d < 90);
-      const baseMax = normalDurations.length > 0 ? Math.max(...normalDurations) : 40;
-      const yMax = Math.max(Math.ceil((baseMax * 1.5) / 15) * 15, 45);
+      // Calcular el valor normal máximo (ignorando pausas olvidadas de más de 90s)
+      const normalLaps = lengths.map(l => l.duration).filter(d => d < 90);
+      const baseMax = normalLaps.length > 0 ? Math.max(...normalLaps) : 40;
+      const yMax = Math.max(Math.ceil((baseMax * 1.4) / 15) * 15, 45);
 
       // 1. EJE Y
       let yHtml = '';
@@ -402,7 +287,7 @@
         const val = Math.round((yMax / numTicks) * i);
         const y = chartH - bottomPadding - (val / yMax) * plotHeight;
         const label = formatTime(val);
-        
+
         yHtml += `
           <text x="50" y="${y + 4}" fill="#94a3b8" font-size="11" font-weight="600" text-anchor="end">${label}</text>
           <line x1="52" y1="${y}" x2="58" y2="${y}" stroke="#475569" stroke-width="1"/>
@@ -427,11 +312,11 @@
       chartHtml += `<line x1="0" y1="${baseY}" x2="${totalW}" y2="${baseY}" stroke="#475569" stroke-width="1.5"/>`;
 
       lengths.forEach((l, i) => {
-        const isExcessive = l.duration > (yMax * 1.2);
+        const isExcessive = l.duration > (yMax * 1.15);
         const barH = isExcessive ? plotHeight : Math.max(4, (l.duration / yMax) * plotHeight);
         const x = 16 + i * (barW + gap);
         const y = baseY - barH;
-        const color = isExcessive ? '#ef4444' : strokeColor(l.stroke, l.isRest);
+        const color = isExcessive ? '#ef4444' : getStrokeColor(l.stroke, l.isRest);
         const isSel = selectedIdx === i;
 
         chartHtml += `
@@ -441,7 +326,6 @@
           </rect>
         `;
 
-        // Si se sale de escala, marcar claramente
         if (isExcessive) {
           chartHtml += `
             <text x="${x + barW/2}" y="${y - 4}" fill="#ef4444" font-size="9" font-weight="bold" text-anchor="middle">
@@ -472,11 +356,11 @@
     function selectBar(idx) {
       selectedIdx = idx;
       const l = lengths[idx];
-      const name = strokeName(l.stroke, l.isRest);
+      const name = getStrokeName(l.stroke, l.isRest);
       const timeStr = formatTime(l.duration);
 
       document.getElementById('selInfo').textContent = `Largo #${idx + 1}: ${name} — ${timeStr} (${l.duration}s)`;
-      
+
       const btnEdit = document.getElementById('btnEdit');
       if (l.isRest) {
         btnEdit.disabled = true;
@@ -488,19 +372,17 @@
       drawChart();
     }
 
-    function updateStats(explicitSessionTime) {
+    function updateStats() {
       const swimLengths = lengths.filter(l => !l.isRest);
-      const totalSec = explicitSessionTime && explicitSessionTime > 0 
-        ? explicitSessionTime 
-        : swimLengths.reduce((acc, l) => acc + l.duration, 0);
-      
+      const totalSec = swimLengths.reduce((acc, l) => acc + l.duration, 0);
+
       document.getElementById('stDist').textContent = `${swimLengths.length * poolLength} m`;
       document.getElementById('stTime').textContent = formatTime(totalSec);
       document.getElementById('stCount').textContent = lengths.length;
       document.getElementById('stPool').textContent = `${poolLength} m`;
     }
 
-    // --- MODAL DE CORRECCIÓN ---
+    // --- CORRECCIÓN ---
     const dlg = document.getElementById('editDialog');
     document.getElementById('btnEdit').addEventListener('click', () => {
       if (selectedIdx === null) return;
@@ -526,7 +408,7 @@
 
       lengths.splice(selectedIdx + 1, 0, {
         duration: diffSec,
-        stroke: 5,
+        stroke: 'rest',
         isRest: true
       });
 
@@ -535,7 +417,7 @@
       selectedIdx = null;
       document.getElementById('btnEdit').disabled = true;
       document.getElementById('selInfo').textContent = `Largo #${fixedIdx + 1} ajustado a ${formatTime(newSec)}. Se crearon ${formatTime(diffSec)} de descanso.`;
-      
+
       updateStats();
       drawChart();
       setStatus("Largo ajustado correctamente.", 'success');
