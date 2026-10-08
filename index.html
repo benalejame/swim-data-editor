@@ -9,7 +9,10 @@
 <body>
   <div class="app-container">
     <header class="app-header">
-      <h1>🏊 Swim Data Editor</h1>
+      <div class="header-title-row">
+        <h1>🏊 Swim Data Editor</h1>
+        <span id="app-version-badge" class="version-badge">v1.0.1</span>
+      </div>
       <p>Ajusta tiempos de largos olvidados y genera descansos sin salir del navegador</p>
     </header>
 
@@ -66,7 +69,6 @@
     </section>
   </div>
 
-  <!-- Diálogo modal para ajustar tiempo -->
   <dialog id="modal-adjust-time">
     <form method="dialog" id="form-adjust-time">
       <h3>Ajustar duración del largo</h3>
