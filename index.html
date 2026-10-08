@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swim Data Editor - v1.0.3</title>
+  <title>Swim Data Editor - v1.0.4</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -17,12 +17,11 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
     body { background: var(--bg); color: var(--text); padding: 16px; }
-    .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+    .container { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
     .header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
     .badge { font-size: 0.75rem; background: #334155; color: var(--accent); padding: 2px 8px; border-radius: 99px; }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
     
-    /* Input & Log */
     .file-box { display: flex; flex-direction: column; gap: 10px; }
     input[type="file"] {
       width: 100%; padding: 12px; border-radius: 8px; border: 1px dashed var(--border);
@@ -35,19 +34,37 @@
     .status.error { border-left-color: var(--danger); background: #450a0a; color: #fca5a5; }
     .status.success { border-left-color: var(--success); background: #064e3b; color: #86efac; }
 
-    /* Stats */
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
     .stat-item { display: flex; flex-direction: column; }
     .stat-lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
     .stat-val { font-size: 1.2rem; font-weight: 700; color: #fff; }
 
-    /* Chart */
-    .chart-box { overflow-x: auto; background: #0b1120; border-radius: 8px; padding: 12px 6px; }
+    /* Contenedor del gráfico con scroll horizontal para móviles */
+    .chart-wrapper {
+      position: relative;
+      display: flex;
+      background: #0b1120;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .y-axis-container {
+      width: 52px;
+      flex-shrink: 0;
+      background: #0b1120;
+      border-right: 1px solid #1e293b;
+      z-index: 2;
+    }
+    .chart-scroll-box {
+      flex-grow: 1;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
     .bar { cursor: pointer; transition: opacity 0.15s; }
     .bar:hover { opacity: 0.8; }
-    .bar.selected { stroke: #fff; stroke-width: 2.5; }
+    .bar.selected { stroke: #ffffff; stroke-width: 2.5; }
 
-    /* Buttons */
     .actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .btn { padding: 9px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
     .btn:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -55,7 +72,6 @@
     .btn-success { background: var(--success); color: #fff; }
     .btn-secondary { background: #334155; color: #fff; }
 
-    /* Legend */
     .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.75rem; margin-top: 10px; }
     .dot { width: 10px; height: 10px; display: inline-block; border-radius: 2px; margin-right: 4px; }
 
@@ -75,12 +91,12 @@
   <div class="container">
     <div class="header">
       <h2>🏊 Swim Data Editor</h2>
-      <span class="badge">v1.0.3 (Standalone)</span>
+      <span class="badge">v1.0.4</span>
     </div>
 
     <div class="card file-box">
       <input type="file" id="fitFile" accept=".fit" />
-      <div id="status" class="status">Toca "Seleccionar archivo" para cargar tu .FIT</div>
+      <div id="status" class="status">Selecciona tu archivo .FIT para analizar los largos</div>
     </div>
 
     <div id="statsCard" class="card stats hidden">
@@ -92,15 +108,21 @@
 
     <div id="editorCard" class="card hidden">
       <div class="actions">
-        <span id="selInfo" style="font-size: 0.85rem; color: var(--muted);">Toca una barra para editarla</span>
+        <span id="selInfo" style="font-size: 0.85rem; color: var(--muted);">Toca una barra para ver detalles o corregirla</span>
         <div style="display: flex; gap: 6px;">
           <button id="btnEdit" class="btn btn-primary" disabled>⏱️ Ajustar Tiempo</button>
           <button id="btnDownload" class="btn btn-success">💾 Descargar .FIT</button>
         </div>
       </div>
 
-      <div class="chart-box" style="margin-top: 12px;">
-        <svg id="chartSvg" height="220" style="min-width: 100%; display: block;"></svg>
+      <!-- Gráfico de barras con Eje Y fijo y Eje X desplazable -->
+      <div class="chart-wrapper">
+        <div class="y-axis-container">
+          <svg id="yAxisSvg" width="52" height="280"></svg>
+        </div>
+        <div class="chart-scroll-box" id="scrollBox">
+          <svg id="chartSvg" height="280"></svg>
+        </div>
       </div>
 
       <div class="legend">
@@ -117,21 +139,20 @@
   <dialog id="editDialog">
     <form method="dialog" id="editForm">
       <h3>Ajustar Largo</h3>
-      <p id="dlgCurrent" style="color: var(--accent); margin: 8px 0; font-size: 0.9rem;">Tiempo: --s</p>
+      <p id="dlgCurrent" style="color: var(--accent); margin: 8px 0; font-size: 0.95rem; font-weight: bold;">Tiempo: --s</p>
       <label style="font-size: 0.8rem; color: var(--muted);">Tiempo real nadando (segundos o mm:ss):</label>
-      <input type="text" id="dlgInput" placeholder="Ej: 42 o 0:42" required />
+      <input type="text" id="dlgInput" placeholder="Ej: 42 o 0:42" required autocomplete="off" />
       <small style="color: var(--muted); font-size: 0.75rem; display: block; margin-bottom: 12px;">
-        El tiempo restante se añadirá como descanso.
+        El tiempo sobrante se insertará como <strong>Descanso (Rest)</strong>.
       </small>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editDialog').close()">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Confirmar</button>
+        <button type="submit" class="btn btn-primary">Aplicar Corrección</button>
       </div>
     </form>
   </dialog>
 
   <script>
-    // --- ESTADO GLOBAL ---
     let fitBytes = null;
     let originalName = 'natacion.fit';
     let lengths = [];
@@ -144,15 +165,21 @@
       statusEl.className = 'status ' + type;
     };
 
-    // --- PARSER FIT BINARIO LIGERO ---
-    // Decodifica directamente del Uint8Array los registros FIT (Global Message 101 = Length)
+    function readFieldVal(dv, offset, size, isLE, baseType) {
+      if (offset + size > dv.byteLength) return null;
+      if (size === 1) return dv.getUint8(offset);
+      if (size === 2) return dv.getUint16(offset, isLE);
+      if (size === 4) return dv.getUint32(offset, isLE);
+      return null;
+    }
+
+    // --- PARSER FIT ROBUSTO ---
     function parseSwimFit(buffer) {
       const dv = new DataView(buffer);
       if (buffer.byteLength < 14) throw new Error("Archivo demasiado corto.");
       
-      // Cabecera FIT: bytes [8..11] deben ser '.FIT'
       const tag = String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11));
-      if (tag !== '.FIT') throw new Error("El archivo no contiene la firma binaria .FIT");
+      if (tag !== '.FIT') throw new Error("El archivo no tiene la firma binaria .FIT");
 
       const headerSize = dv.getUint8(0);
       const dataSize = dv.getUint32(4, true);
@@ -166,10 +193,8 @@
       while (offset < endOffset && offset < buffer.byteLength) {
         const recordHeader = dv.getUint8(offset++);
         
-        // Cabecera comprimida de timestamp
         if ((recordHeader & 0x80) !== 0) {
-          offset += 0; // Datos normales
-          continue;
+          continue; // Cabecera comprimida
         }
 
         const isDefinition = (recordHeader & 0x40) !== 0;
@@ -178,8 +203,8 @@
         if (isDefinition) {
           offset++; // reserved
           const arch = dv.getUint8(offset++);
-          const isLittleEndian = arch === 0;
-          const globalMsgNum = dv.getUint16(offset, isLittleEndian); offset += 2;
+          const isLE = arch === 0;
+          const globalMsgNum = dv.getUint16(offset, isLE); offset += 2;
           const numFields = dv.getUint8(offset++);
           const fields = [];
 
@@ -190,62 +215,60 @@
             fields.push({ num: fieldNum, size: fieldSize, type: baseType });
           }
 
-          // Si tiene campos de desarrollador
           if ((recordHeader & 0x20) !== 0) {
             const devFields = dv.getUint8(offset++);
             offset += devFields * 3;
           }
 
-          localDefs[localMsgType] = { globalMsgNum, fields, isLittleEndian };
+          localDefs[localMsgType] = { globalMsgNum, fields, isLE };
         } else {
-          // Registro de datos
           const def = localDefs[localMsgType];
-          if (!def) break; // Desincronización
+          if (!def) break;
 
           const recordStart = offset;
-          let duration = null;
+          let timerTime = null;
+          let elapsedTime = null;
           let stroke = 0;
-          let lengthType = 1; // 1 = activo, 0 = idle/rest
+          let lengthType = 1;
 
-          // Global Message 101 = Length | 18 = Session
-          if (def.globalMsgNum === 101) {
+          if (def.globalMsgNum === 101) { // Mensaje 'length'
             let fieldOffset = recordStart;
             for (const f of def.fields) {
-              if (f.num === 2) { // total_timer_time (scale 1000)
-                if (f.size === 4 && fieldOffset + 4 <= buffer.byteLength) {
-                  duration = dv.getUint32(fieldOffset, def.isLittleEndian) / 1000;
-                }
-              } else if (f.num === 1) { // total_elapsed_time
-                if (!duration && f.size === 4 && fieldOffset + 4 <= buffer.byteLength) {
-                  duration = dv.getUint32(fieldOffset, def.isLittleEndian) / 1000;
-                }
-              } else if (f.num === 7) { // swim_stroke
-                stroke = dv.getUint8(fieldOffset);
-              } else if (f.num === 12) { // length_type
-                lengthType = dv.getUint8(fieldOffset);
+              const val = readFieldVal(dv, fieldOffset, f.size, def.isLE, f.type);
+              
+              if (f.num === 2 && val !== null) { // total_timer_time
+                // Escala de Garmin: si supera 500 viene en milisegundos (scale 1000)
+                timerTime = val > 500 ? (val / 1000) : val;
+              } else if (f.num === 1 && val !== null) { // total_elapsed_time
+                elapsedTime = val > 500 ? (val / 1000) : val;
+              } else if (f.num === 7 && val !== null) { // swim_stroke
+                stroke = val;
+              } else if (f.num === 12 && val !== null) { // length_type
+                lengthType = val;
               }
               fieldOffset += f.size;
             }
 
-            if (duration !== null && duration > 0) {
+            const finalDur = Math.round(timerTime || elapsedTime || 0);
+            if (finalDur > 0) {
               parsedLengths.push({
                 offset: recordStart,
-                duration: Math.round(duration),
+                duration: finalDur,
                 stroke: stroke,
                 isRest: stroke === 5 || lengthType === 0
               });
             }
-          } else if (def.globalMsgNum === 18) { // Session
+          } else if (def.globalMsgNum === 18) { // Mensaje 'session'
             let fieldOffset = recordStart;
             for (const f of def.fields) {
-              if (f.num === 44 && f.size === 2) { // pool_length (scale 100)
-                detectedPool = dv.getUint16(fieldOffset, def.isLittleEndian) / 100;
+              if (f.num === 44 && f.size === 2) {
+                const val = dv.getUint16(fieldOffset, def.isLE);
+                if (val > 0) detectedPool = val / 100;
               }
               fieldOffset += f.size;
             }
           }
 
-          // Avanzar offset sumando los tamaños de los campos
           for (const f of def.fields) offset += f.size;
         }
       }
@@ -253,29 +276,27 @@
       return { lengths: parsedLengths, pool: detectedPool };
     }
 
-    // --- EVENTO DE SELECCIÓN DE ARCHIVO ---
+    // --- CARGA DE ARCHIVO ---
     document.getElementById('fitFile').addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
 
       originalName = file.name;
-      setStatus(`Leyendo ${file.name}...`, 'info');
+      setStatus(`Analizando ${file.name}...`, 'info');
 
       try {
         const buffer = await file.arrayBuffer();
         fitBytes = new Uint8Array(buffer);
-        
-        setStatus("Analizando estructura FIT de natación...", 'info');
         const res = parseSwimFit(buffer);
 
         if (!res.lengths || res.lengths.length === 0) {
-          throw new Error("No se han detectado largos individuales en este archivo.");
+          throw new Error("No se encontraron largos de piscina en el archivo.");
         }
 
         lengths = res.lengths;
         poolLength = res.pool || 25;
 
-        setStatus(`✅ ${lengths.length} largos cargados con éxito (${originalName})`, 'success');
+        setStatus(`✅ ${lengths.length} largos detectados correctamente.`, 'success');
         
         document.getElementById('statsCard').classList.remove('hidden');
         document.getElementById('editorCard').classList.remove('hidden');
@@ -287,43 +308,114 @@
       }
     });
 
-    // --- CHART SVG ---
     function strokeColor(stroke, isRest) {
-      if (isRest || stroke === 5) return '#64748b'; // Rest
+      if (isRest || stroke === 5) return '#64748b';
       if (stroke === 0) return '#38bdf8'; // Freestyle
       if (stroke === 1) return '#818cf8'; // Backstroke
       if (stroke === 2) return '#fbbf24'; // Breaststroke
       if (stroke === 3) return '#f87171'; // Butterfly
-      return '#a78bfa'; // Drill / Otro
+      return '#a78bfa'; // Drill / Técnica
     }
 
-    function drawChart() {
-      const svg = document.getElementById('chartSvg');
-      const barW = 12;
-      const gap = 4;
-      const h = 200;
-      const totalW = Math.max(svg.parentElement.clientWidth, lengths.length * (barW + gap) + 40);
-      const maxDur = Math.max(...lengths.map(l => l.duration), 60);
+    function strokeName(stroke, isRest) {
+      if (isRest || stroke === 5) return 'Descanso';
+      if (stroke === 0) return 'Crol';
+      if (stroke === 1) return 'Espalda';
+      if (stroke === 2) return 'Braza';
+      if (stroke === 3) return 'Mariposa';
+      return 'Técnica';
+    }
 
-      let html = '';
+    // --- DIBUJADO DE GRÁFICO CON EJES X e Y ---
+    function drawChart() {
+      const ySvg = document.getElementById('yAxisSvg');
+      const chartSvg = document.getElementById('chartSvg');
+      
+      const chartH = 280;
+      const topPadding = 20;
+      const bottomPadding = 35; // Espacio para etiquetas de largo
+      const plotHeight = chartH - topPadding - bottomPadding;
+
+      // Calcular el valor máximo real de duración
+      const maxVal = Math.max(...lengths.map(l => l.duration), 30);
+      // Redondear el máximo del eje al múltiplo superior de 15 o 30
+      const step = maxVal > 120 ? 30 : 15;
+      const yMax = Math.ceil(maxVal / step) * step;
+
+      // 1. DIBUJAR EJE Y (Vertical Fijo)
+      let yHtml = '';
+      const numTicks = 4;
+      for (let i = 0; i <= numTicks; i++) {
+        const val = Math.round((yMax / numTicks) * i);
+        const y = chartH - bottomPadding - (val / yMax) * plotHeight;
+        
+        // Formato tiempo (segundos o mm:ss si es alto)
+        const label = val >= 60 ? `${Math.floor(val/60)}m${val%60 ? val%60 : ''}` : `${val}s`;
+        
+        yHtml += `
+          <text x="46" y="${y + 4}" fill="#94a3b8" font-size="10" text-anchor="end">${label}</text>
+          <line x1="48" y1="${y}" x2="52" y2="${y}" stroke="#475569" stroke-width="1"/>
+        `;
+      }
+      ySvg.innerHTML = yHtml;
+
+      // 2. DIBUJAR BARRAS Y EJE X (Desplazable)
+      const barW = 20;
+      const gap = 10;
+      const totalW = Math.max(chartSvg.parentElement.clientWidth, lengths.length * (barW + gap) + 40);
+
+      let chartHtml = '';
+
+      // Líneas de cuadrícula horizontales
+      for (let i = 0; i <= numTicks; i++) {
+        const val = Math.round((yMax / numTicks) * i);
+        const y = chartH - bottomPadding - (val / yMax) * plotHeight;
+        chartHtml += `<line x1="0" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+      }
+
+      // Línea base del Eje X
+      const baseY = chartH - bottomPadding;
+      chartHtml += `<line x1="0" y1="${baseY}" x2="${totalW}" y2="${baseY}" stroke="#475569" stroke-width="1.5"/>`;
+
+      // Barras y Números de Largo
       lengths.forEach((l, i) => {
-        const barH = Math.max(4, Math.round((l.duration / maxDur) * (h - 30)));
+        const barH = Math.max(3, (l.duration / yMax) * plotHeight);
         const x = 16 + i * (barW + gap);
-        const y = h - barH - 16;
+        const y = baseY - barH;
         const color = strokeColor(l.stroke, l.isRest);
         const isSel = selectedIdx === i;
 
-        html += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="2"
-                       fill="${color}" class="bar ${isSel ? 'selected' : ''}" data-idx="${i}">
-                   <title>#${i+1}: ${l.duration}s</title>
-                 </rect>`;
+        // Barra
+        chartHtml += `
+          <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3"
+                fill="${color}" class="bar ${isSel ? 'selected' : ''}" data-idx="${i}">
+            <title>Largo #${i+1}: ${l.duration}s (${strokeName(l.stroke, l.isRest)})</title>
+          </rect>
+        `;
+
+        // Etiqueta del Eje X (Número de Largo)
+        chartHtml += `
+          <text x="${x + barW/2}" y="${baseY + 16}" fill="${isSel ? '#ffffff' : '#94a3b8'}" 
+                font-size="10" font-weight="${isSel ? 'bold' : 'normal'}" text-anchor="middle">
+            #${i + 1}
+          </text>
+        `;
+
+        // Si la barra es muy anómala (larga), mostrar los segundos encima para localizarla al momento
+        if (l.duration >= 60 || l.duration === maxVal) {
+          chartHtml += `
+            <text x="${x + barW/2}" y="${y - 4}" fill="#38bdf8" font-size="9" font-weight="bold" text-anchor="middle">
+              ${l.duration}s
+            </text>
+          `;
+        }
       });
 
-      html += `<line x1="10" y1="${h-15}" x2="${totalW-10}" y2="${h-15}" stroke="#334155" stroke-width="1"/>`;
-      svg.setAttribute('width', totalW);
-      svg.innerHTML = html;
+      chartSvg.setAttribute('width', totalW);
+      chartSvg.innerHTML = chartHtml;
 
-      svg.querySelectorAll('.bar').forEach(r => {
+      // Eventos de selección
+      chartSvg.querySelectorAll('.bar').forEach(r => {
         r.addEventListener('click', (ev) => {
           const idx = Number(ev.target.getAttribute('data-idx'));
           selectBar(idx);
@@ -334,14 +426,17 @@
     function selectBar(idx) {
       selectedIdx = idx;
       const l = lengths[idx];
-      const selInfo = document.getElementById('selInfo');
-      const btnEdit = document.getElementById('btnEdit');
+      const name = strokeName(l.stroke, l.isRest);
+      const min = Math.floor(l.duration / 60);
+      const sec = l.duration % 60;
+      const timeFmt = min > 0 ? `${min}m ${sec}s (${l.duration}s)` : `${l.duration}s`;
 
-      selInfo.textContent = `Largo #${idx + 1} seleccionado: ${l.duration}s ${l.isRest ? '(Descanso)' : ''}`;
+      document.getElementById('selInfo').textContent = `Largo #${idx + 1} seleccionado: ${name} — ${timeFmt}`;
       
+      const btnEdit = document.getElementById('btnEdit');
       if (l.isRest) {
         btnEdit.disabled = true;
-        btnEdit.textContent = 'Es un descanso';
+        btnEdit.textContent = 'Es Descanso';
       } else {
         btnEdit.disabled = false;
         btnEdit.textContent = '⏱️ Ajustar Tiempo';
@@ -361,11 +456,12 @@
       document.getElementById('stPool').textContent = `${poolLength} m`;
     }
 
-    // --- MODAL DE AJUSTE ---
+    // --- MODAL DE CORRECCIÓN ---
     const dlg = document.getElementById('editDialog');
     document.getElementById('btnEdit').addEventListener('click', () => {
       if (selectedIdx === null) return;
-      document.getElementById('dlgCurrent').textContent = `Tiempo actual: ${lengths[selectedIdx].duration} segundos`;
+      const cur = lengths[selectedIdx].duration;
+      document.getElementById('dlgCurrent').textContent = `Largo #${selectedIdx + 1}: ${cur} segundos registrados`;
       document.getElementById('dlgInput').value = '';
       dlg.showModal();
     });
@@ -373,7 +469,9 @@
     document.getElementById('editForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const val = document.getElementById('dlgInput').value.trim();
-      let newSec = val.includes(':') ? (Number(val.split(':')[0]) * 60 + Number(val.split(':')[1])) : Number(val);
+      let newSec = val.includes(':') 
+        ? (Number(val.split(':')[0]) * 60 + Number(val.split(':')[1]))
+        : Number(val);
 
       if (isNaN(newSec) || newSec <= 0) return alert("Introduce un tiempo válido.");
       const cur = lengths[selectedIdx].duration;
@@ -382,7 +480,7 @@
       const diffSec = cur - newSec;
       lengths[selectedIdx].duration = newSec;
 
-      // Insertar descanso inmediatamente después con los segundos restantes
+      // Insertar el descanso con el sobrante
       lengths.splice(selectedIdx + 1, 0, {
         duration: diffSec,
         stroke: 5,
@@ -390,18 +488,19 @@
       });
 
       dlg.close();
+      const fixedIdx = selectedIdx;
       selectedIdx = null;
       document.getElementById('btnEdit').disabled = true;
-      document.getElementById('selInfo').textContent = 'Largo ajustado y descanso añadido.';
+      document.getElementById('selInfo').textContent = `Largo #${fixedIdx + 1} reducido a ${newSec}s. Se añadieron ${diffSec}s de descanso.`;
+      
       updateStats();
       drawChart();
-      setStatus("Largo ajustado correctamente. Listo para descargar.", 'success');
+      setStatus("Largo ajustado correctamente.", 'success');
     });
 
-    // --- DESCARGA DEL ARCHIVO MODIFICADO ---
+    // --- DESCARGA ---
     document.getElementById('btnDownload').addEventListener('click', () => {
       if (!fitBytes) return;
-      // Generar descarga del archivo local
       const blob = new Blob([fitBytes], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
