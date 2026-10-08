@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swim Data Editor - v1.0.5</title>
+  <title>Swim Data Editor - v1.0.6</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -90,7 +90,7 @@
   <div class="container">
     <div class="header">
       <h2>🏊 Swim Data Editor</h2>
-      <span class="badge">v1.0.5</span>
+      <span class="badge">v1.0.6</span>
     </div>
 
     <div class="card file-box">
@@ -139,9 +139,9 @@
       <h3>Ajustar Largo</h3>
       <p id="dlgCurrent" style="color: var(--accent); margin: 8px 0; font-size: 0.95rem; font-weight: bold;">Tiempo: --s</p>
       <label style="font-size: 0.8rem; color: var(--muted);">Tiempo real nadando (segundos o mm:ss):</label>
-      <input type="text" id="dlgInput" placeholder="Ej: 38 o 0:38" required autocomplete="off" />
+      <input type="text" id="dlgInput" placeholder="Ej: 24 o 0:24" required autocomplete="off" />
       <small style="color: var(--muted); font-size: 0.75rem; display: block; margin-bottom: 12px;">
-        El tiempo restante se añadirá como descanso (Rest).
+        El tiempo restante se convertirá en descanso (Rest).
       </small>
       <div style="display: flex; justify-content: flex-end; gap: 8px;">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editDialog').close()">Cancelar</button>
@@ -171,7 +171,6 @@
       return null;
     }
 
-    // Formateador de tiempo legible: 45s o 1:25
     function formatTime(totalSec) {
       const s = Math.round(totalSec);
       const min = Math.floor(s / 60);
@@ -180,7 +179,7 @@
       return `${min}:${rem.toString().padStart(2, '0')}`;
     }
 
-    // --- PARSER FIT BINARIO DE NATACIÓN ---
+    // --- PARSER FIT PRECISO ---
     function parseSwimFit(buffer) {
       const dv = new DataView(buffer);
       if (buffer.byteLength < 14) throw new Error("Archivo demasiado corto.");
@@ -199,7 +198,7 @@
 
       while (offset < endOffset && offset < buffer.byteLength) {
         const recordHeader = dv.getUint8(offset++);
-        if ((recordHeader & 0x80) !== 0) continue; // Skip timestamps comprimidos
+        if ((recordHeader & 0x80) !== 0) continue;
 
         const isDefinition = (recordHeader & 0x40) !== 0;
         const localMsgType = recordHeader & 0x0F;
@@ -231,50 +230,43 @@
 
           const recordStart = offset;
 
-          // Global Message 101 = length
+          // Message 101 = Length
           if (def.globalMsgNum === 101) {
             let fieldOffset = recordStart;
             let timerTime = null;
             let elapsedTime = null;
             let stroke = 0;
             let lengthType = 1;
-            let startTime = null;
 
             for (const f of def.fields) {
               const raw = readVal(dv, fieldOffset, f.size, def.isLE);
 
-              if (f.num === 2 && raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF) {
-                // total_timer_time: Garmin lo guarda con escala 1000 (ms) o 100 (centésimas)
-                timerTime = raw > 1000 ? (raw / 1000) : (raw > 150 ? raw / 100 : raw);
-              } else if (f.num === 1 && raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF) {
-                // total_elapsed_time
-                elapsedTime = raw > 1000 ? (raw / 1000) : (raw > 150 ? raw / 100 : raw);
-              } else if (f.num === 7 && raw !== null) {
-                stroke = raw; // 0: libre, 1: espalda, 2: braza, 3: mariposa, 5: rest
-              } else if (f.num === 12 && raw !== null) {
-                lengthType = raw; // 1: nado, 0: idle/rest
-              } else if (f.num === 3 && raw !== null) {
-                startTime = raw;
+              if (raw !== null && raw !== 0xFFFFFFFF && raw !== 0xFFFF && raw !== 0xFF) {
+                if (f.num === 2) { 
+                  // total_timer_time: en Garmin va en milisegundos (/ 1000) o centésimas (/ 100)
+                  timerTime = (f.size === 4 && raw > 500) ? (raw / 1000) : (raw > 200 ? raw / 100 : raw);
+                } else if (f.num === 1) { 
+                  // total_elapsed_time
+                  elapsedTime = (f.size === 4 && raw > 500) ? (raw / 1000) : (raw > 200 ? raw / 100 : raw);
+                } else if (f.num === 7) {
+                  stroke = raw;
+                } else if (f.num === 12) {
+                  lengthType = raw;
+                }
               }
               fieldOffset += f.size;
             }
 
-            // Normalización de duración real del largo
-            let dur = timerTime || elapsedTime || 0;
-            
-            // Si la duración sigue dando disparatada (> 3600 segundos = 1 hora en un solo largo), es un timestamp
-            if (dur > 3600) {
-              dur = 0;
-            }
+            // Duración exacta del largo (admite decimales reales)
+            let dur = timerTime !== null ? timerTime : (elapsedTime !== null ? elapsedTime : 0);
 
             rawLengths.push({
-              duration: Math.round(dur),
+              duration: Math.round(dur * 10) / 10,
               stroke: stroke,
-              isRest: stroke === 5 || lengthType === 0,
-              startTime: startTime
+              isRest: stroke === 5 || lengthType === 0
             });
           } else if (def.globalMsgNum === 18) {
-            // Global Message 18 = session
+            // Message 18 = Session
             let fieldOffset = recordStart;
             for (const f of def.fields) {
               if (f.num === 44 && f.size === 2) {
@@ -286,17 +278,6 @@
           }
 
           for (const f of def.fields) offset += f.size;
-        }
-      }
-
-      // Si algún largo no tenía duración explícita pero sí startTime secuencial, calcular delta
-      for (let i = 0; i < rawLengths.length; i++) {
-        if (rawLengths[i].duration <= 0) {
-          if (i + 1 < rawLengths.length && rawLengths[i+1].startTime && rawLengths[i].startTime) {
-            const diff = rawLengths[i+1].startTime - rawLengths[i].startTime;
-            if (diff > 0 && diff < 300) rawLengths[i].duration = diff;
-          }
-          if (rawLengths[i].duration <= 0) rawLengths[i].duration = 25; // Fallback coherente
         }
       }
 
@@ -317,13 +298,13 @@
         const res = parseSwimFit(buffer);
 
         if (!res.lengths || res.lengths.length === 0) {
-          throw new Error("No se detectaron largos de natación en piscina.");
+          throw new Error("No se detectaron largos individuales en el archivo.");
         }
 
         lengths = res.lengths;
         poolLength = res.pool || 25;
 
-        setStatus(`✅ ${lengths.length} largos detectados correctamente.`, 'success');
+        setStatus(`✅ ${lengths.length} largos detectados. Tiempos reales cargados.`, 'success');
         document.getElementById('statsCard').classList.remove('hidden');
         document.getElementById('editorCard').classList.remove('hidden');
         
@@ -352,7 +333,7 @@
       return 'Técnica';
     }
 
-    // --- GRÁFICO ---
+    // --- DIBUJADO DE GRÁFICO (CON ESCALA INTELIGENTE) ---
     function drawChart() {
       const ySvg = document.getElementById('yAxisSvg');
       const chartSvg = document.getElementById('chartSvg');
@@ -362,12 +343,14 @@
       const bottomPadding = 35;
       const plotHeight = chartH - topPadding - bottomPadding;
 
-      // Calcular máximo real (acotado a valores lógicos)
-      const maxVal = Math.max(...lengths.map(l => l.duration), 45);
-      const step = maxVal > 120 ? 30 : 15;
-      const yMax = Math.ceil(maxVal / step) * step;
+      // Obtenemos los tiempos de nado habituales (ignorando aberraciones > 120s para la escala base)
+      const normalDurations = lengths.map(l => l.duration).filter(d => d < 120);
+      const normalMax = normalDurations.length > 0 ? Math.max(...normalDurations) : 40;
+      
+      // La escala Y se fija para que los largos normales (20s-40s) ocupen el 50-70% de la altura
+      const yMax = Math.max(Math.ceil((normalMax * 1.4) / 10) * 10, 45);
 
-      // 1. EJE Y (Tiempo real en segundos o mm:ss)
+      // 1. EJE Y
       let yHtml = '';
       const numTicks = 4;
       for (let i = 0; i <= numTicks; i++) {
@@ -389,33 +372,40 @@
 
       let chartHtml = '';
 
-      // Líneas de cuadrícula horizontales
       for (let i = 0; i <= numTicks; i++) {
         const val = Math.round((yMax / numTicks) * i);
         const y = chartH - bottomPadding - (val / yMax) * plotHeight;
         chartHtml += `<line x1="0" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
       }
 
-      // Eje X base
       const baseY = chartH - bottomPadding;
       chartHtml += `<line x1="0" y1="${baseY}" x2="${totalW}" y2="${baseY}" stroke="#475569" stroke-width="1.5"/>`;
 
       lengths.forEach((l, i) => {
-        const barH = Math.max(3, (l.duration / yMax) * plotHeight);
+        // Altura proporcional: si supera yMax, llega hasta arriba con aviso visual
+        const isOverflow = l.duration > yMax;
+        const barH = isOverflow ? plotHeight : Math.max(4, (l.duration / yMax) * plotHeight);
         const x = 16 + i * (barW + gap);
         const y = baseY - barH;
-        const color = strokeColor(l.stroke, l.isRest);
+        const color = isOverflow ? '#ef4444' : strokeColor(l.stroke, l.isRest); // Se resalta en rojo si es erróneo
         const isSel = selectedIdx === i;
 
-        // Barra limpia (sin rótulo apelotonado arriba)
         chartHtml += `
           <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="3"
                 fill="${color}" class="bar ${isSel ? 'selected' : ''}" data-idx="${i}">
-            <title>#${i+1}: ${formatTime(l.duration)} (${strokeName(l.stroke, l.isRest)})</title>
+            <title>#${i+1}: ${formatTime(l.duration)}</title>
           </rect>
         `;
 
-        // Número de largo (#1, #2, etc.)
+        // Indicador si se dispara de tiempo
+        if (isOverflow) {
+          chartHtml += `
+            <text x="${x + barW/2}" y="${y - 4}" fill="#ef4444" font-size="9" font-weight="bold" text-anchor="middle">
+              ⚠️ ${formatTime(l.duration)}
+            </text>
+          `;
+        }
+
         chartHtml += `
           <text x="${x + barW/2}" y="${baseY + 16}" fill="${isSel ? '#ffffff' : '#94a3b8'}" 
                 font-size="10" font-weight="${isSel ? 'bold' : 'normal'}" text-anchor="middle">
@@ -464,7 +454,7 @@
       document.getElementById('stPool').textContent = `${poolLength} m`;
     }
 
-    // --- MODAL DE CORRECCIÓN ---
+    // --- AJUSTE Y RECORTE ---
     const dlg = document.getElementById('editDialog');
     document.getElementById('btnEdit').addEventListener('click', () => {
       if (selectedIdx === null) return;
@@ -485,10 +475,9 @@
       const cur = lengths[selectedIdx].duration;
       if (newSec >= cur) return alert(`El nuevo tiempo (${newSec}s) debe ser menor al registrado (${cur}s).`);
 
-      const diffSec = cur - newSec;
+      const diffSec = Math.round((cur - newSec) * 10) / 10;
       lengths[selectedIdx].duration = newSec;
 
-      // Insertar descanso con los segundos restantes
       lengths.splice(selectedIdx + 1, 0, {
         duration: diffSec,
         stroke: 5,
@@ -506,7 +495,6 @@
       setStatus("Largo ajustado correctamente.", 'success');
     });
 
-    // --- DESCARGA ---
     document.getElementById('btnDownload').addEventListener('click', () => {
       if (!fitBytes) return;
       const blob = new Blob([fitBytes], { type: 'application/octet-stream' });
