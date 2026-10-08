@@ -5,7 +5,6 @@ let workoutData = null;
 let currentFileName = '';
 let selectedLengthIndex = null;
 
-// Elementos del DOM
 const fitInput = document.getElementById('fit-input');
 const fileNameLabel = document.getElementById('file-name-label');
 const statsPanel = document.getElementById('stats-panel');
@@ -14,37 +13,37 @@ const btnOpenAdjust = document.getElementById('btn-open-adjust');
 const btnExportFit = document.getElementById('btn-export-fit');
 const selectionInfo = document.getElementById('selection-info');
 
-// Elementos del Modal
 const modalAdjust = document.getElementById('modal-adjust-time');
 const formAdjust = document.getElementById('form-adjust-time');
 const lblCurrentTime = document.getElementById('lbl-current-time');
 const inputNewTime = document.getElementById('input-new-time');
 const btnCancelModal = document.getElementById('btn-cancel-modal');
 
-// Actualizar panel de resumen
 function updateStatsUI() {
-  if (!workoutData?.sessionMesg) return;
+  if (!workoutData) return;
   const sess = workoutData.sessionMesg;
 
-  document.getElementById('stat-dist').textContent = `${sess.totalDistance || 0} m`;
-  const t = Math.round(sess.totalTimerTime || 0);
-  const min = Math.floor(t / 60);
-  const sec = t % 60;
+  const totalDist = sess?.totalDistance ?? (workoutData.lengthMesgs.length * (sess?.poolLength || 25));
+  document.getElementById('stat-dist').textContent = `${Math.round(totalDist)} m`;
+
+  const totalTimeSec = Math.round(sess?.totalTimerTime || sess?.totalElapsedTime || 0);
+  const min = Math.floor(totalTimeSec / 60);
+  const sec = totalTimeSec % 60;
   document.getElementById('stat-time').textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+
   document.getElementById('stat-lengths').textContent = workoutData.lengthMesgs.length;
-  document.getElementById('stat-pool').textContent = `${sess.poolLength || 25} m`;
+  document.getElementById('stat-pool').textContent = `${sess?.poolLength || 25} m`;
 }
 
-// Manejar selección de largo en el gráfico
 function handleSelectLength(index) {
   selectedLengthIndex = index;
   const len = workoutData.lengthMesgs[index];
   const dur = Math.round(len.totalTimerTime || len.totalElapsedTime || 0);
 
-  selectionInfo.textContent = `Seleccionado Largo #${index + 1} (${len.swimStroke}, ${dur}s)`;
+  selectionInfo.textContent = `Largo #${index + 1} seleccionado: ${len.swimStroke || 'Estilo'} (${dur}s)`;
 
-  // Desactivar ajuste si ya es un descanso
-  if (len.swimStroke === 'rest' || len.lengthType === 'idle') {
+  const strokeStr = String(len.swimStroke || '').toLowerCase();
+  if (strokeStr === 'rest' || len.lengthType === 'idle') {
     btnOpenAdjust.disabled = true;
     btnOpenAdjust.textContent = '⏱️ Es un descanso (Rest)';
   } else {
@@ -53,30 +52,37 @@ function handleSelectLength(index) {
   }
 }
 
-// Carga del archivo .FIT
+// Evento de selección de archivo
 fitInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
   currentFileName = file.name;
-  fileNameLabel.textContent = file.name;
+  fileNameLabel.textContent = `Cargando: ${file.name}...`;
 
   try {
     workoutData = await parseFitFile(file);
+    fileNameLabel.textContent = `Cargado: ${file.name}`;
+
     statsPanel.classList.remove('hidden');
     editorPanel.classList.remove('hidden');
 
     updateStatsUI();
     renderLengthsChart(workoutData.lengthMesgs, handleSelectLength);
+
     selectedLengthIndex = null;
     btnOpenAdjust.disabled = true;
     selectionInfo.textContent = 'Haz clic en una barra para seleccionarla';
   } catch (err) {
-    alert("Error al parsear el archivo FIT: " + err.message);
+    console.error("Error al procesar el archivo:", err);
+    fileNameLabel.textContent = 'Error al cargar';
+    alert(`No se pudo leer el archivo:\n${err.message}`);
+  } finally {
+    // Permite volver a seleccionar el mismo archivo si se desea recargar
+    fitInput.value = '';
   }
 });
 
-// Abrir modal de ajuste
 btnOpenAdjust.addEventListener('click', () => {
   if (selectedLengthIndex === null) return;
   const len = workoutData.lengthMesgs[selectedLengthIndex];
@@ -89,7 +95,6 @@ btnOpenAdjust.addEventListener('click', () => {
 
 btnCancelModal.addEventListener('click', () => modalAdjust.close());
 
-// Confirmar ajuste de tiempo
 formAdjust.addEventListener('submit', (e) => {
   e.preventDefault();
   const val = inputNewTime.value.trim();
@@ -103,7 +108,7 @@ formAdjust.addEventListener('submit', (e) => {
   }
 
   if (isNaN(newSec) || newSec <= 0) {
-    alert("Introduce un tiempo válido en segundos");
+    alert("Introduce un tiempo válido en segundos (ej. 45 o 0:45)");
     return;
   }
 
@@ -120,7 +125,6 @@ formAdjust.addEventListener('submit', (e) => {
   }
 });
 
-// Descargar archivo corregido
 btnExportFit.addEventListener('click', () => {
   if (!workoutData) return;
   exportAndDownloadFit(workoutData, currentFileName);
