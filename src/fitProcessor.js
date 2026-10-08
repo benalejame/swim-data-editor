@@ -1,28 +1,39 @@
 import { Decoder, Encoder, Stream } from '@garmin/fitsdk';
 
 export async function parseFitFile(file) {
+  // 1. Lectura binaria del archivo
   const arrayBuffer = await file.arrayBuffer();
-  const byteArray = new Uint8Array(arrayBuffer);
-  const stream = Stream.fromByteArray(byteArray);
+  const uint8 = new Uint8Array(arrayBuffer);
 
-  if (!Decoder.isFIT(stream)) {
-    throw new Error("El archivo no es un formato binario .FIT reconocido.");
+  // 2. Creación del Stream compatible con navegador
+  let stream;
+  if (typeof Stream.fromByteArray === 'function') {
+    stream = Stream.fromByteArray(uint8);
+  } else if (typeof Stream.fromArrayBuffer === 'function') {
+    stream = Stream.fromArrayBuffer(arrayBuffer);
+  } else {
+    stream = new Stream(uint8);
   }
 
+  // 3. Validación FIT
+  if (typeof Decoder.isFIT === 'function') {
+    if (!Decoder.isFIT(stream)) {
+      throw new Error("El archivo no tiene cabecera FIT válida.");
+    }
+  }
+
+  // 4. Decodificación
   const decoder = new Decoder(stream);
-  const { messages, errors } = decoder.read({
+  const result = decoder.read({
     applyScaleAndOffset: true,
     expandSubFields: true,
     convertTypesToStrings: true,
     convertDateTimesToDates: true
   });
 
-  if (errors && errors.length > 0) {
-    console.warn("Avisos del decodificador FIT:", errors);
-  }
+  const messages = result.messages || result;
 
-  console.log("Mensajes extraídos del archivo FIT:", messages);
-
+  // Normalizar nombres de mensajes (el SDK varía entre versiones)
   const lengthMesgs = messages.lengthMesgs || messages.lengths || messages.length || [];
   const lapMesgs = messages.lapMesgs || messages.laps || messages.lap || [];
   const sessionMesg = (messages.sessionMesgs && messages.sessionMesgs[0]) || 
@@ -31,11 +42,15 @@ export async function parseFitFile(file) {
   const fileIdMesgs = messages.fileIdMesgs || messages.fileIds || messages.file_id || [];
   const activityMesgs = messages.activityMesgs || messages.activities || messages.activity || [];
 
-  if (lengthMesgs.length === 0) {
-    throw new Error(
-      "El archivo no contiene largos de piscina (mensajes 'length'). " +
-      "Verifica que la actividad sea de perfil natación en piscina."
-    );
+  if (!lengthMesgs || lengthMesgs.length === 0) {
+    // Si no hay largos individuales, comprobar si hay laps
+    if (lapMesgs.length > 0) {
+      throw new Error(
+        "El archivo contiene series ('lap') pero no largos individuales ('length'). " +
+        "Verifica que el archivo provenga de un entrenamiento en piscina con detección de largos."
+      );
+    }
+    throw new Error("No se encontraron registros de natación en este archivo .FIT.");
   }
 
   return {

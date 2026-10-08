@@ -8,12 +8,6 @@ if (versionBadge) {
   versionBadge.textContent = `v${APP_VERSION}`;
 }
 
-console.log(
-  `%c🏊 Swim Data Editor%c v${APP_VERSION} `,
-  'background: #38bdf8; color: #0f172a; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;',
-  'background: #334155; color: #f8fafc; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0;'
-);
-
 let workoutData = null;
 let currentFileName = '';
 let selectedLengthIndex = null;
@@ -53,7 +47,7 @@ function handleSelectLength(index) {
   const len = workoutData.lengthMesgs[index];
   const dur = Math.round(len.totalTimerTime || len.totalElapsedTime || 0);
 
-  selectionInfo.textContent = `Largo #${index + 1} seleccionado: ${len.swimStroke || 'Estilo'} (${dur}s)`;
+  selectionInfo.textContent = `Largo #${index + 1}: ${len.swimStroke || 'Estilo'} (${dur}s)`;
 
   const strokeStr = String(len.swimStroke || '').toLowerCase();
   if (strokeStr === 'rest' || len.lengthType === 'idle') {
@@ -65,16 +59,18 @@ function handleSelectLength(index) {
   }
 }
 
+// Escuchar cambios en el selector de archivo
 fitInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
 
+  const file = files[0];
   currentFileName = file.name;
-  fileNameLabel.textContent = `Cargando: ${file.name}...`;
+  fileNameLabel.textContent = `Procesando: ${file.name} (${Math.round(file.size / 1024)} KB)...`;
 
   try {
     workoutData = await parseFitFile(file);
-    fileNameLabel.textContent = `Cargado: ${file.name}`;
+    fileNameLabel.textContent = `✅ Cargado: ${file.name}`;
 
     statsPanel.classList.remove('hidden');
     editorPanel.classList.remove('hidden');
@@ -84,11 +80,10 @@ fitInput.addEventListener('change', async (e) => {
 
     selectedLengthIndex = null;
     btnOpenAdjust.disabled = true;
-    selectionInfo.textContent = 'Haz clic en una barra para seleccionarla';
+    selectionInfo.textContent = 'Toca una barra para seleccionarla';
   } catch (err) {
-    console.error("Error al procesar el archivo:", err);
-    fileNameLabel.textContent = 'Error al cargar';
-    alert(`No se pudo leer el archivo:\n${err.message}`);
+    fileNameLabel.textContent = `❌ Error: ${err.message}`;
+    alert(`Error al procesar el archivo:\n\n${err.message}`);
   } finally {
     fitInput.value = '';
   }
@@ -119,7 +114,7 @@ formAdjust.addEventListener('submit', (e) => {
   }
 
   if (isNaN(newSec) || newSec <= 0) {
-    alert("Introduce un tiempo válido en segundos (ej. 45 o 0:45)");
+    alert("Introduce un tiempo válido en segundos");
     return;
   }
 
@@ -130,7 +125,7 @@ formAdjust.addEventListener('submit', (e) => {
     updateStatsUI();
     renderLengthsChart(workoutData.lengthMesgs, handleSelectLength);
     btnOpenAdjust.disabled = true;
-    selectionInfo.textContent = 'Largo ajustado correctamente. Nuevo descanso creado.';
+    selectionInfo.textContent = 'Largo ajustado y descanso generado correctamente.';
   } catch (err) {
     alert(err.message);
   }
