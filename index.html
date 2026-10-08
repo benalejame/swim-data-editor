@@ -3,92 +3,413 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swim Data Editor - Corrector FIT</title>
-  <link rel="stylesheet" href="./src/style.css" />
+  <title>Swim Data Editor - v1.0.3</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; }
+    .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+    .header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .badge { font-size: 0.75rem; background: #334155; color: var(--accent); padding: 2px 8px; border-radius: 99px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    
+    /* Input & Log */
+    .file-box { display: flex; flex-direction: column; gap: 10px; }
+    input[type="file"] {
+      width: 100%; padding: 12px; border-radius: 8px; border: 1px dashed var(--border);
+      background: #0b1120; color: var(--text); font-size: 0.95rem;
+    }
+    .status {
+      padding: 10px 12px; border-radius: 6px; font-size: 0.85rem; background: #0b1120;
+      border-left: 4px solid var(--accent); color: #cbd5e1; word-break: break-all;
+    }
+    .status.error { border-left-color: var(--danger); background: #450a0a; color: #fca5a5; }
+    .status.success { border-left-color: var(--success); background: #064e3b; color: #86efac; }
+
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-lbl { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+    .stat-val { font-size: 1.2rem; font-weight: 700; color: #fff; }
+
+    /* Chart */
+    .chart-box { overflow-x: auto; background: #0b1120; border-radius: 8px; padding: 12px 6px; }
+    .bar { cursor: pointer; transition: opacity 0.15s; }
+    .bar:hover { opacity: 0.8; }
+    .bar.selected { stroke: #fff; stroke-width: 2.5; }
+
+    /* Buttons */
+    .actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .btn { padding: 9px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #0f172a; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-secondary { background: #334155; color: #fff; }
+
+    /* Legend */
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.75rem; margin-top: 10px; }
+    .dot { width: 10px; height: 10px; display: inline-block; border-radius: 2px; margin-right: 4px; }
+
+    .hidden { display: none !important; }
+
+    dialog {
+      margin: auto; padding: 20px; background: var(--card); color: #fff;
+      border: 1px solid var(--border); border-radius: 12px; width: 90%; max-width: 360px;
+    }
+    dialog input {
+      width: 100%; padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid var(--border);
+      background: #0b1120; color: #fff; font-size: 1rem;
+    }
+  </style>
 </head>
 <body>
-  <div class="app-container">
-    <header class="app-header">
-      <div class="header-title-row">
-        <h1>🏊 Swim Data Editor</h1>
-        <span id="app-version-badge" class="version-badge">v1.0.2</span>
-      </div>
-      <p>Ajusta tiempos de largos olvidados y genera descansos</p>
-    </header>
+  <div class="container">
+    <div class="header">
+      <h2>🏊 Swim Data Editor</h2>
+      <span class="badge">v1.0.3 (Standalone)</span>
+    </div>
 
-    <section class="card upload-section">
-      <div class="file-drop-area">
-        <!-- Input estándar visible para compatibilidad total con selectores móviles -->
-        <input type="file" id="fit-input" />
-        <div id="status-log" class="status-box">Selecciona un archivo .FIT para empezar</div>
-      </div>
-    </section>
+    <div class="card file-box">
+      <input type="file" id="fitFile" accept=".fit" />
+      <div id="status" class="status">Toca "Seleccionar archivo" para cargar tu .FIT</div>
+    </div>
 
-    <section id="stats-panel" class="card stats-grid hidden">
-      <div class="stat-box">
-        <span class="stat-label">Distancia Total</span>
-        <span class="stat-value" id="stat-dist">-- m</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Tiempo Nado</span>
-        <span class="stat-value" id="stat-time">--:--</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Largos Totales</span>
-        <span class="stat-value" id="stat-lengths">--</span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Piscina</span>
-        <span class="stat-value" id="stat-pool">-- m</span>
-      </div>
-    </section>
+    <div id="statsCard" class="card stats hidden">
+      <div class="stat-item"><span class="stat-lbl">Distancia</span><span class="stat-val" id="stDist">-- m</span></div>
+      <div class="stat-item"><span class="stat-lbl">Tiempo</span><span class="stat-val" id="stTime">--:--</span></div>
+      <div class="stat-item"><span class="stat-lbl">Largos</span><span class="stat-val" id="stCount">--</span></div>
+      <div class="stat-item"><span class="stat-lbl">Piscina</span><span class="stat-val" id="stPool">-- m</span></div>
+    </div>
 
-    <section id="editor-panel" class="card hidden">
-      <div class="toolbar">
-        <div class="toolbar-info">
-          <span id="selection-info">Toca una barra para seleccionarla</span>
-        </div>
-        <div class="toolbar-actions">
-          <button id="btn-open-adjust" class="btn secondary" disabled>⏱️ Ajustar tiempo</button>
-          <button id="btn-export-fit" class="btn success">💾 Descargar .FIT</button>
+    <div id="editorCard" class="card hidden">
+      <div class="actions">
+        <span id="selInfo" style="font-size: 0.85rem; color: var(--muted);">Toca una barra para editarla</span>
+        <div style="display: flex; gap: 6px;">
+          <button id="btnEdit" class="btn btn-primary" disabled>⏱️ Ajustar Tiempo</button>
+          <button id="btnDownload" class="btn btn-success">💾 Descargar .FIT</button>
         </div>
       </div>
 
-      <div class="chart-scroll-container">
-        <div id="svg-chart-container" class="svg-container"></div>
+      <div class="chart-box" style="margin-top: 12px;">
+        <svg id="chartSvg" height="220" style="min-width: 100%; display: block;"></svg>
       </div>
 
-      <div class="legend-bar">
-        <span class="legend-tag crol">Crol / Libre</span>
-        <span class="legend-tag espalda">Espalda</span>
-        <span class="legend-tag braza">Braza</span>
-        <span class="legend-tag mariposa">Mariposa</span>
-        <span class="legend-tag drill">Técnica</span>
-        <span class="legend-tag rest">Descanso (Rest)</span>
+      <div class="legend">
+        <span><span class="dot" style="background:#38bdf8;"></span>Crol</span>
+        <span><span class="dot" style="background:#818cf8;"></span>Espalda</span>
+        <span><span class="dot" style="background:#fbbf24;"></span>Braza</span>
+        <span><span class="dot" style="background:#f87171;"></span>Mariposa</span>
+        <span><span class="dot" style="background:#a78bfa;"></span>Técnica</span>
+        <span><span class="dot" style="background:#64748b;"></span>Descanso</span>
       </div>
-    </section>
+    </div>
   </div>
 
-  <dialog id="modal-adjust-time">
-    <form method="dialog" id="form-adjust-time">
-      <h3>Ajustar duración del largo</h3>
-      <p id="lbl-current-time" style="margin: 10px 0; color: #38bdf8;">Tiempo registrado: -- s</p>
-
-      <div class="form-group">
-        <label for="input-new-time">Tiempo real nadando (segundos o mm:ss):</label>
-        <input type="text" id="input-new-time" placeholder="Ej: 42 o 0:42" required autocomplete="off" />
-        <small style="color: #94a3b8; display: block; margin-top: 4px;">
-          El tiempo sobrante se añadirá inmediatamente como <strong>Descanso (Rest)</strong>.
-        </small>
-      </div>
-
-      <div class="dialog-buttons">
-        <button type="button" id="btn-cancel-modal" class="btn secondary">Cancelar</button>
-        <button type="submit" class="btn primary">Confirmar</button>
+  <dialog id="editDialog">
+    <form method="dialog" id="editForm">
+      <h3>Ajustar Largo</h3>
+      <p id="dlgCurrent" style="color: var(--accent); margin: 8px 0; font-size: 0.9rem;">Tiempo: --s</p>
+      <label style="font-size: 0.8rem; color: var(--muted);">Tiempo real nadando (segundos o mm:ss):</label>
+      <input type="text" id="dlgInput" placeholder="Ej: 42 o 0:42" required />
+      <small style="color: var(--muted); font-size: 0.75rem; display: block; margin-bottom: 12px;">
+        El tiempo restante se añadirá como descanso.
+      </small>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('editDialog').close()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Confirmar</button>
       </div>
     </form>
   </dialog>
 
-  <script type="module" src="./src/main.js"></script>
+  <script>
+    // --- ESTADO GLOBAL ---
+    let fitBytes = null;
+    let originalName = 'natacion.fit';
+    let lengths = [];
+    let poolLength = 25;
+    let selectedIdx = null;
+
+    const statusEl = document.getElementById('status');
+    const setStatus = (msg, type = 'info') => {
+      statusEl.textContent = msg;
+      statusEl.className = 'status ' + type;
+    };
+
+    // --- PARSER FIT BINARIO LIGERO ---
+    // Decodifica directamente del Uint8Array los registros FIT (Global Message 101 = Length)
+    function parseSwimFit(buffer) {
+      const dv = new DataView(buffer);
+      if (buffer.byteLength < 14) throw new Error("Archivo demasiado corto.");
+      
+      // Cabecera FIT: bytes [8..11] deben ser '.FIT'
+      const tag = String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11));
+      if (tag !== '.FIT') throw new Error("El archivo no contiene la firma binaria .FIT");
+
+      const headerSize = dv.getUint8(0);
+      const dataSize = dv.getUint32(4, true);
+      let offset = headerSize;
+      const endOffset = headerSize + dataSize;
+
+      const localDefs = {};
+      const parsedLengths = [];
+      let detectedPool = 25;
+
+      while (offset < endOffset && offset < buffer.byteLength) {
+        const recordHeader = dv.getUint8(offset++);
+        
+        // Cabecera comprimida de timestamp
+        if ((recordHeader & 0x80) !== 0) {
+          offset += 0; // Datos normales
+          continue;
+        }
+
+        const isDefinition = (recordHeader & 0x40) !== 0;
+        const localMsgType = recordHeader & 0x0F;
+
+        if (isDefinition) {
+          offset++; // reserved
+          const arch = dv.getUint8(offset++);
+          const isLittleEndian = arch === 0;
+          const globalMsgNum = dv.getUint16(offset, isLittleEndian); offset += 2;
+          const numFields = dv.getUint8(offset++);
+          const fields = [];
+
+          for (let f = 0; f < numFields; f++) {
+            const fieldNum = dv.getUint8(offset++);
+            const fieldSize = dv.getUint8(offset++);
+            const baseType = dv.getUint8(offset++);
+            fields.push({ num: fieldNum, size: fieldSize, type: baseType });
+          }
+
+          // Si tiene campos de desarrollador
+          if ((recordHeader & 0x20) !== 0) {
+            const devFields = dv.getUint8(offset++);
+            offset += devFields * 3;
+          }
+
+          localDefs[localMsgType] = { globalMsgNum, fields, isLittleEndian };
+        } else {
+          // Registro de datos
+          const def = localDefs[localMsgType];
+          if (!def) break; // Desincronización
+
+          const recordStart = offset;
+          let duration = null;
+          let stroke = 0;
+          let lengthType = 1; // 1 = activo, 0 = idle/rest
+
+          // Global Message 101 = Length | 18 = Session
+          if (def.globalMsgNum === 101) {
+            let fieldOffset = recordStart;
+            for (const f of def.fields) {
+              if (f.num === 2) { // total_timer_time (scale 1000)
+                if (f.size === 4 && fieldOffset + 4 <= buffer.byteLength) {
+                  duration = dv.getUint32(fieldOffset, def.isLittleEndian) / 1000;
+                }
+              } else if (f.num === 1) { // total_elapsed_time
+                if (!duration && f.size === 4 && fieldOffset + 4 <= buffer.byteLength) {
+                  duration = dv.getUint32(fieldOffset, def.isLittleEndian) / 1000;
+                }
+              } else if (f.num === 7) { // swim_stroke
+                stroke = dv.getUint8(fieldOffset);
+              } else if (f.num === 12) { // length_type
+                lengthType = dv.getUint8(fieldOffset);
+              }
+              fieldOffset += f.size;
+            }
+
+            if (duration !== null && duration > 0) {
+              parsedLengths.push({
+                offset: recordStart,
+                duration: Math.round(duration),
+                stroke: stroke,
+                isRest: stroke === 5 || lengthType === 0
+              });
+            }
+          } else if (def.globalMsgNum === 18) { // Session
+            let fieldOffset = recordStart;
+            for (const f of def.fields) {
+              if (f.num === 44 && f.size === 2) { // pool_length (scale 100)
+                detectedPool = dv.getUint16(fieldOffset, def.isLittleEndian) / 100;
+              }
+              fieldOffset += f.size;
+            }
+          }
+
+          // Avanzar offset sumando los tamaños de los campos
+          for (const f of def.fields) offset += f.size;
+        }
+      }
+
+      return { lengths: parsedLengths, pool: detectedPool };
+    }
+
+    // --- EVENTO DE SELECCIÓN DE ARCHIVO ---
+    document.getElementById('fitFile').addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      originalName = file.name;
+      setStatus(`Leyendo ${file.name}...`, 'info');
+
+      try {
+        const buffer = await file.arrayBuffer();
+        fitBytes = new Uint8Array(buffer);
+        
+        setStatus("Analizando estructura FIT de natación...", 'info');
+        const res = parseSwimFit(buffer);
+
+        if (!res.lengths || res.lengths.length === 0) {
+          throw new Error("No se han detectado largos individuales en este archivo.");
+        }
+
+        lengths = res.lengths;
+        poolLength = res.pool || 25;
+
+        setStatus(`✅ ${lengths.length} largos cargados con éxito (${originalName})`, 'success');
+        
+        document.getElementById('statsCard').classList.remove('hidden');
+        document.getElementById('editorCard').classList.remove('hidden');
+        
+        updateStats();
+        drawChart();
+      } catch (err) {
+        setStatus(`❌ Error: ${err.message}`, 'error');
+      }
+    });
+
+    // --- CHART SVG ---
+    function strokeColor(stroke, isRest) {
+      if (isRest || stroke === 5) return '#64748b'; // Rest
+      if (stroke === 0) return '#38bdf8'; // Freestyle
+      if (stroke === 1) return '#818cf8'; // Backstroke
+      if (stroke === 2) return '#fbbf24'; // Breaststroke
+      if (stroke === 3) return '#f87171'; // Butterfly
+      return '#a78bfa'; // Drill / Otro
+    }
+
+    function drawChart() {
+      const svg = document.getElementById('chartSvg');
+      const barW = 12;
+      const gap = 4;
+      const h = 200;
+      const totalW = Math.max(svg.parentElement.clientWidth, lengths.length * (barW + gap) + 40);
+      const maxDur = Math.max(...lengths.map(l => l.duration), 60);
+
+      let html = '';
+      lengths.forEach((l, i) => {
+        const barH = Math.max(4, Math.round((l.duration / maxDur) * (h - 30)));
+        const x = 16 + i * (barW + gap);
+        const y = h - barH - 16;
+        const color = strokeColor(l.stroke, l.isRest);
+        const isSel = selectedIdx === i;
+
+        html += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="2"
+                       fill="${color}" class="bar ${isSel ? 'selected' : ''}" data-idx="${i}">
+                   <title>#${i+1}: ${l.duration}s</title>
+                 </rect>`;
+      });
+
+      html += `<line x1="10" y1="${h-15}" x2="${totalW-10}" y2="${h-15}" stroke="#334155" stroke-width="1"/>`;
+      svg.setAttribute('width', totalW);
+      svg.innerHTML = html;
+
+      svg.querySelectorAll('.bar').forEach(r => {
+        r.addEventListener('click', (ev) => {
+          const idx = Number(ev.target.getAttribute('data-idx'));
+          selectBar(idx);
+        });
+      });
+    }
+
+    function selectBar(idx) {
+      selectedIdx = idx;
+      const l = lengths[idx];
+      const selInfo = document.getElementById('selInfo');
+      const btnEdit = document.getElementById('btnEdit');
+
+      selInfo.textContent = `Largo #${idx + 1} seleccionado: ${l.duration}s ${l.isRest ? '(Descanso)' : ''}`;
+      
+      if (l.isRest) {
+        btnEdit.disabled = true;
+        btnEdit.textContent = 'Es un descanso';
+      } else {
+        btnEdit.disabled = false;
+        btnEdit.textContent = '⏱️ Ajustar Tiempo';
+      }
+      drawChart();
+    }
+
+    function updateStats() {
+      const swimLengths = lengths.filter(l => !l.isRest);
+      const totalSec = swimLengths.reduce((acc, l) => acc + l.duration, 0);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+
+      document.getElementById('stDist').textContent = `${swimLengths.length * poolLength} m`;
+      document.getElementById('stTime').textContent = `${min}:${sec.toString().padStart(2, '0')}`;
+      document.getElementById('stCount').textContent = lengths.length;
+      document.getElementById('stPool').textContent = `${poolLength} m`;
+    }
+
+    // --- MODAL DE AJUSTE ---
+    const dlg = document.getElementById('editDialog');
+    document.getElementById('btnEdit').addEventListener('click', () => {
+      if (selectedIdx === null) return;
+      document.getElementById('dlgCurrent').textContent = `Tiempo actual: ${lengths[selectedIdx].duration} segundos`;
+      document.getElementById('dlgInput').value = '';
+      dlg.showModal();
+    });
+
+    document.getElementById('editForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = document.getElementById('dlgInput').value.trim();
+      let newSec = val.includes(':') ? (Number(val.split(':')[0]) * 60 + Number(val.split(':')[1])) : Number(val);
+
+      if (isNaN(newSec) || newSec <= 0) return alert("Introduce un tiempo válido.");
+      const cur = lengths[selectedIdx].duration;
+      if (newSec >= cur) return alert(`El nuevo tiempo (${newSec}s) debe ser menor al registrado (${cur}s).`);
+
+      const diffSec = cur - newSec;
+      lengths[selectedIdx].duration = newSec;
+
+      // Insertar descanso inmediatamente después con los segundos restantes
+      lengths.splice(selectedIdx + 1, 0, {
+        duration: diffSec,
+        stroke: 5,
+        isRest: true
+      });
+
+      dlg.close();
+      selectedIdx = null;
+      document.getElementById('btnEdit').disabled = true;
+      document.getElementById('selInfo').textContent = 'Largo ajustado y descanso añadido.';
+      updateStats();
+      drawChart();
+      setStatus("Largo ajustado correctamente. Listo para descargar.", 'success');
+    });
+
+    // --- DESCARGA DEL ARCHIVO MODIFICADO ---
+    document.getElementById('btnDownload').addEventListener('click', () => {
+      if (!fitBytes) return;
+      // Generar descarga del archivo local
+      const blob = new Blob([fitBytes], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = originalName.replace(/\.fit$/i, '_corregido.fit');
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
 </body>
 </html>
